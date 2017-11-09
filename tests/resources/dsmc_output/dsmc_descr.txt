@@ -1,0 +1,22 @@
+IBM Tivoli Storage Manager
+Command Line Backup-Archive Client Interface
+  Client Version 7, Release 1, Level 2.0 
+  Client date/time: 2017-09-21 12.42.07
+(c) Copyright by IBM Corporation and other(s) 1990, 2015. All Rights Reserved.
+
+Node Name: BACKUP_TEST_NODE
+Session established with server BLACKHOLE: Linux/x86_64
+  Server Version 6, Release 3, Level 5.0
+  Server date/time: 2017-09-21 14.42.07  Last access: 2017-09-21 14.15.15
+
+Accessing as node: SLLUPNGI_TEST
+             Size  Archive Date - Time    File - Expires on - Description
+             ----  -------------------    -------------------------------
+ test with compression
+         4 096  B  2017-01-10 15.16.26    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never bce2592a-3bcb-4d5d-acbc-3170469ff23a
+         4 096  B  2017-01-10 16.09.42    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never d1b51671-25b8-4bb1-85bf-f9d82082f0ef
+         4 096  B  2017-01-11 11.59.47    /data/mm-xart002/runfolders/johanhe_test_0809_002-AG2UJ_archive Never 6acc509e-dd17-4cdc-a2f5-852da3914e9c
+         4 096  B  2017-01-10 16.12.27    /data/mm-xart002/runfolders/johanhe_test_0809_003-AG2UJ_archive Never 83291d19-cae8-40f2-87d6-aeffc24d3ab8
+         4 096  B  2017-01-10 16.47.24    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never a33623ba-55ad-4034-9222-dae8801aa65e
+         4 096  B  2017-01-11 11.34.25    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never c1baece2-3fe2-4708-85d1-da42128ca846
+         4 096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4

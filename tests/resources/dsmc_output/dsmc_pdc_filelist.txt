@@ -1,0 +1,32 @@
+IBM Tivoli Storage Manager
+Command Line Backup-Archive Client Interface
+  Client Version 7, Release 1, Level 2.0 
+  Client date/time: 2017-09-21 12.55.43
+(c) Copyright by IBM Corporation and other(s) 1990, 2015. All Rights Reserved.
+
+Node Name: BACKUP_HOST_TEST
+Session established with server BLACKHOLE: Linux/x86_64
+  Server Version 6, Release 3, Level 5.0
+  Server date/time: 2017-09-21 14.55.43  Last access: 2017-09-21 14.42.07
+
+Accessing as node: SLLUPNGI_TEST
+             Size  Archive Date - Time    File - Expires on - Description
+             ----  -------------------    -------------------------------
+         4 096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+         4 096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+         4 096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Unaligned Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/RunInfo.xml Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/SampleSheet.csv Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+         7 088  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/checksums_prior_to_pdc.md5 Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+        14 861  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/johanhe_test_0809_001-AG2UJ_archive.tar.gz Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/runParameters.xml Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config/Effective.cfg Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config/MiSeqOverride.cfg Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config/RTAStart.bat Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/ControlMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/CorrectedIntMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/ErrorMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/ExtractionMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/IndexMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/QMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+             0  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/InterOp/TileMetricsOut.bin Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4

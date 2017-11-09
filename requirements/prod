@@ -1,0 +1,7 @@
+jsonpickle==0.9.2
+tornado==4.2.1
+git+https://github.com/dakl/localq.git@v0.3.7
+# Localq depence on networkx
+networkx==1.11
+git+https://github.com/arteria-project/arteria-core.git@v1.1.0#egg=arteria-core
+

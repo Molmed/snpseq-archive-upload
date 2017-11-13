@@ -62,14 +62,13 @@ class BaseDsmcHandler(BaseRestHandler):
     @staticmethod
     def _rm_empty_dirs(path, remove_root=True):
       """
-      Recursively removes empty directories.
+      Recursively removes empty sub directories.
       :param path: Path to remove
       :param remove_root: Whether or not to remove the root directory
       """
-      # Remove empty sub directories
       files = os.listdir(path)
 
-      if len(files):
+      if files:
         for f in files:
           fullpath = os.path.join(path, f)
 
@@ -92,6 +91,7 @@ class BaseDsmcHandler(BaseRestHandler):
                 "state": State.ERROR,
                 "msg": msg}
         self.write_object(response_data)
+        self.finish()
 
 class VersionHandler(BaseDsmcHandler):
     """
@@ -136,14 +136,43 @@ class ReuploadHelper(object):
         log.debug("Found the following uploaded versions of this archive: {}".format(uploaded_versions))
 
         # Uploads are chronologically sorted, with the latest upload last.
-        latest_upload = uploaded_versions[-1:][0]
+        latest_upload = uploaded_versions[-1]
 
         # We need the description of this upload: the last field. E.g.:
         # 4,096  B  01/10/2017 16:47:24    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive Never a33623ba-55ad-4034-9222-dae8801aa65e
-        latest_descr = latest_upload.split()[-1:][0]
+        latest_descr = latest_upload.split()[-1]
         log.debug("Latest uploaded version is {} with description {}".format(latest_upload, latest_descr))
 
         return latest_descr
+
+    def _parse_name_size(self, line, search_string):
+        """
+        Searches through the string `line` and tries to parse out the filename and the byte size of the file.
+        A (TSM) line can look like:
+        4,096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
+        but varies, depending on the environment's locale. Size can e.g. be "4 096".
+
+        :param line: TSM output string to parse, usually come
+        :param search_string: A magic search string that we know will exist in `line`, to make it easier to split `line` into parts
+        :return A tuple with the filename and the file's byte size
+        """
+        elements = line.split(" B ")
+        size = elements[0].strip()
+
+        if "," in size:
+            byte_size = size.replace(",", "")
+        elif " " in size:
+            byte_size = size.replace(" ", "")
+        else:
+            byte_size = size
+
+        # We can't be completely sure what format the timestamp will be returned with.
+        # And we can not be 100% sure what format the description will have either, at least in the future.
+        # This will have to do for now.
+        substr = re.search("{}(.*) Never ".format(search_string), line)
+        filename = ("{}{}".format(search_string, substr.group(1))).strip()
+
+        return (filename, byte_size)
 
     def get_pdc_filelist(self, path_to_archive, descr, dsmc_log_dir):
         """
@@ -176,26 +205,8 @@ class ReuploadHelper(object):
         uploaded_files = {}
 
         # We need to convert the sizes to a common format for easier comparison with local size.
-        # An output line can look like
-        #4,096  B  2017-07-27 17.48.34    /data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive/Config Never e374bd6b-ab36-4f41-94d3-f4eaea9f30d4
-        # but varies, depending on the environment's locale. Can e.g. be "4 096",
         for line in matched_lines:
-            elements = line.split(" B ")
-            size = elements[0].strip()
-
-            if "," in size:
-                byte_size = size.replace(",", "")
-            elif " " in size:
-                byte_size = size.replace(" ", "")
-            else:
-                byte_size = size
-
-            # We can't be completely sure what format the timestamp will be returned with.
-            # And we can not be 100% sure what format the description will have either, at least in the future.
-            # This will have to do for now.
-            import re
-            substr = re.search("{}(.*) Never ".format(path_to_archive), line)
-            filename = ("{}{}".format(path_to_archive, substr.group(1))).strip()
+            filename, byte_size = self._parse_name_size(line, path_to_archive)
 
             # NB A potential error here is if the same file has been uploaded multiple times with the same descriptions.
             # It is then a bit ambigious what to do. TSM sorts and returns them in chronological order though,
@@ -314,7 +325,6 @@ class ReuploadHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, monitored_dir):
             msg = "Error when validating runfolder. {} is not found under {}.".format(runfolder_archive, monitored_dir)
             self.abort(msg)
-            return
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
@@ -322,7 +332,6 @@ class ReuploadHandler(BaseDsmcHandler):
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
             self.abort(msg)
-            return
 
         dsmc_log_dir = "{}/dsmc_{}".format(dsmc_log_root_dir, runfolder_archive)
 
@@ -363,10 +372,10 @@ class ReuploadHandler(BaseDsmcHandler):
 
             response_data = {
             "service_version": version,
-            "state": State.DONE,
+            "state": State.ERROR,
             "dsmc_log_dir": dsmc_log_dir}
 
-            self.set_status(200, reason="nothing to reupload")
+            self.set_status(400, reason="nothing to reupload")
 
         self.write_object(response_data)
 
@@ -389,7 +398,6 @@ class UploadHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, monitored_dir):
             msg = "Error when validating runfolder. {} is not found under {}".format(runfolder_archive, monitored_dir)
             self.abort(msg)
-            return
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
@@ -398,7 +406,6 @@ class UploadHandler(BaseDsmcHandler):
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
             self.abort(msg)
-            return
 
         dsmc_log_dir = "{}/dsmc_{}".format(dsmc_log_root_dir, runfolder_archive)
 
@@ -447,7 +454,6 @@ class GenChecksumsHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, path_to_archive_root):
             msg = "Error when validating runfolder. {} is not found under {}".format(runfolder_archive, path_to_archive_root)
             self.abort(msg)
-            return
 
         path_to_archive = os.path.join(path_to_archive_root, runfolder_archive)
         filename = "checksums_prior_to_pdc.md5"
@@ -586,28 +592,23 @@ class CreateDirHandler(BaseDsmcHandler):
             remove = eval(request_data["remove"]) # str2bool
         except (ValueError, KeyError):
             self.abort(missing_rm_msg)
-            return
 
-        if remove not in [True, False]:
+        if not isinstance(remove, bool):
             self.abort(missing_rm_msg)
-            return
 
         if not self._validate_runfolder_exists(runfolder, monitored_dir):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(runfolder, monitored_dir)
             self.abort(msg)
-            return
 
         my_host = self.request.headers.get('Host')
 
         if "biotank" in my_host and not self._verify_unaligned(path_to_runfolder):
             msg = "Error when validating Unaligned. Unaligned symlink {} broken or missing.".format(path_to_runfolder, "Unaligned")
             self.abort(msg)
-            return
 
         if not self._verify_dest(path_to_archive, remove):
             msg = "Error when validating destination path {} (remove={})".format(path_to_archive, remove)
             self.abort(msg)
-            return
 
         try:
             log.info("Creating a new archive {}...".format(path_to_archive))
@@ -615,7 +616,6 @@ class CreateDirHandler(BaseDsmcHandler):
             self._create_archive(path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
         except ArteriaUsageException, msg:
             self.abort("Error when creating archive dir: {}".format(msg))
-            return
 
         response_data = {"service_version": version, "state": State.DONE}
 
@@ -643,7 +643,6 @@ class CompressArchiveHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(archive, path_to_archive_root):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(archive, path_to_archive_root)
             self.abort(msg)
-            return
 
         tarball_path = "{}.tar.gz".format(os.path.join(path_to_archive, archive))
 
@@ -652,7 +651,6 @@ class CompressArchiveHandler(BaseDsmcHandler):
         if os.path.exists(tarball_path):
             msg = "Error when creating archive tarball. {} already exists.".format(tarball_path)
             self.abort(msg)
-            return
 
         def exclude_content(tarinfo):
             """
@@ -696,7 +694,6 @@ class CompressArchiveHandler(BaseDsmcHandler):
                 except OSError, e:
                     msg = "Error when creating archive tarball. Could not remove file {}: {}".format(filepath, e)
                     self.abort(msg)
-                    return
 
         response_data = {"service_version": version, "state": State.DONE}
         self.set_status(200, reason="Finished creating the tarball")
@@ -727,28 +724,28 @@ class StatusHandler(BaseDsmcHandler):
 
         self.write_json(status)
 
-class StopHandler(BaseDsmcHandler):
-    """
-    Stop one or all jobs.
-    """
-
-    def post(self, job_id):
-        """
-        Stops the job with the specified id.
-        :param job_id: of job to stop, or set to "all" to stop all jobs
-        """
-        try:
-            if job_id == "all":
-                log.info("Attempting to stop all jobs.")
-                self.runner_service.stop_all()
-                log.info("Stopped all jobs!")
-                self.set_status(200)
-            elif job_id:
-                log.info("Attempting to stop job: {}".format(job_id))
-                self.runner_service.stop(job_id)
-                self.set_status(200)
-            else:
-                ArteriaUsageException("Unknown job to stop")
-        except ArteriaUsageException as e:
-            log.warning("Failed stopping job: {}. Message: ".format(job_id, e.message))
-            self.send_error(500, reason=e.message)
+#class StopHandler(BaseDsmcHandler):
+#    """
+#    Stop one or all jobs.
+#    """
+#
+#    def post(self, job_id):
+#        """
+#        Stops the job with the specified id.
+#        :param job_id: of job to stop, or set to "all" to stop all jobs
+#        """
+#        try:
+#            if job_id == "all":
+#                log.info("Attempting to stop all jobs.")
+#                self.runner_service.stop_all()
+#                log.info("Stopped all jobs!")
+#                self.set_status(200)
+#            elif job_id:
+#                log.info("Attempting to stop job: {}".format(job_id))
+#                self.runner_service.stop(job_id)
+#                self.set_status(200)
+#            else:
+#                ArteriaUsageException("Unknown job to stop")
+#        except ArteriaUsageException as e:
+#            log.warning("Failed stopping job: {}. Message: ".format(job_id, e.message))
+#            self.send_error(500, reason=e.message)

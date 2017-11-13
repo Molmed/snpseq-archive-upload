@@ -99,50 +99,52 @@ class LocalQAdapter(JobRunnerAdapter):
     def stop_all(self):
         return self.server.stop_all_jobs()
 
-    # Returns the stats of the long running DSMC or md5sum job. 
+    def _parse_dsmc_return_code(job):
+        log.debug("DSMC process returned an error!")
+
+        # DSMC sets return code to 8 when a warning was encountered.
+        if job.proc.returncode == 8:
+            log.debug("DSMC process actually returned a warning.")
+
+            # Search through the DSMC log and see if we only have
+            # whitelisted warnings. If that is the case, change the
+            # return code to 0 instead. Otherwise keep the error state.
+            warnings = []
+
+            with open(job.stdout) as dsmc_log:
+                for line in dsmc_log:
+                    matches = re.findall(r'ANS[0-9]+W', line)
+
+                    for match in matches:
+                        warnings.append(match)
+
+                log.debug("Warnings found in DSMC output: {}".format(warnings))
+
+                for warning in warnings:
+                    if warning not in self.whitelisted_warnings:
+                        log.debug("A non-whitelisted DSMC warning was encountered. Keeping Arteria's error return state.")
+                        return arteria_state.ERROR
+
+                log.debug("Only whitelisted DSMC warnings were encountered. Changing Arteria's return state to DONE.")
+                return arteria_state.DONE
+        else:
+            log.info("An uncatched DSMC error code was encountered!")
+            return arteria_state.ERROR
+
+    # Returns the stats of the long running DSMC or md5sum job.
     def status(self, job_id):
+        job = self.server.get_job_with_id(int(job_id))
         arteria_status = LocalQAdapter.localq2arteria_status(self.server.get_status(job_id))
 
-        # This is a bit hacky, because we're assuming this will only/mostly happen to 
-        # dsmc and not md5sum. 
-        if arteria_status == arteria_state.ERROR: 
-            log.debug("DSMC process returned an error!")
-            job = self.server.get_job_with_id(int(job_id))
-
-            # DSMC sets return code to 8 when a warning was encountered. 
-            # md5sum returns nonzero to indicate a failure. 
-            if job.proc.returncode == 8: 
-                log.debug("DSMC process actually returned a warning.")
-
-                # Search through the DSMC log and see if we only have 
-                # whitelisted warnings. If that is the case, change the
-                # return code to 0 instead. Otherwise keep the error state. 
-
-                warnings = []
-
-                with open(job.stdout) as dsmc_log: 
-                    for line in dsmc_log: 
-                        matches = re.findall(r'ANS[0-9]+W', line)
-
-                        for match in matches: 
-                            warnings.append(match) 
-
-                    log.debug("Warnings found in DSMC output: {}".format(warnings))
-
-                    for warning in warnings: 
-                        if warning not in self.whitelisted_warnings: 
-                            log.debug("A non-whitelisted DSMC warning was encountered. Keeping Arteria's error return state.")
-                            return arteria_state.ERROR
-
-                    log.debug("Only whitelisted DSMC warnings were encountered. Changing Arteria's return state to DONE.")
-                    return arteria_state.DONE
-            else: 
-                log.info("An uncatched DSMC error code was encountered!")
-                return arteria_state.ERROR
-        else: 
+        # This is not perfect, as we can't be 100% sure that this will only
+        # happen for dsmc jobs.
+        if arteria_status == arteria_state.ERROR and "dsmc" in job.cmd and \
+                                                     "md5sum" not in job.cmd:
+            return self._parse_dsmc_return_code(job)
+        else:
             return arteria_status
 
-    # TODO: At the moment `status_all()` will not re-write the return code from dsmc as with `status()`. 
+    # TODO: At the moment `status_all()` will not re-write the return code from dsmc as with `status()`.
     def status_all(self):
         jobs_and_status = {}
         for k, v in self.server.get_status_all().iteritems():

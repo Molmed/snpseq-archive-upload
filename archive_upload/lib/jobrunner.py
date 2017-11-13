@@ -6,7 +6,9 @@ from arteria.web.state import State as arteria_state
 
 log = logging.getLogger(__name__)
 
+
 class JobRunnerAdapter:
+
     """
     Specifies interface that should be used by jobrunners.
     """
@@ -56,6 +58,7 @@ class JobRunnerAdapter:
 
 
 class LocalQAdapter(JobRunnerAdapter):
+
     """
     An implementation of `JobRunnerAdapter` running jobs through
     localq (a jobrunner which will schedule jobs on a single node).
@@ -122,10 +125,12 @@ class LocalQAdapter(JobRunnerAdapter):
 
                 for warning in warnings:
                     if warning not in self.whitelisted_warnings:
-                        log.debug("A non-whitelisted DSMC warning was encountered. Keeping Arteria's error return state.")
+                        log.debug(
+                            "A non-whitelisted DSMC warning was encountered. Keeping Arteria's error return state.")
                         return arteria_state.ERROR
 
-                log.debug("Only whitelisted DSMC warnings were encountered. Changing Arteria's return state to DONE.")
+                log.debug(
+                    "Only whitelisted DSMC warnings were encountered. Changing Arteria's return state to DONE.")
                 return arteria_state.DONE
         else:
             log.info("An uncatched DSMC error code was encountered!")
@@ -144,7 +149,8 @@ class LocalQAdapter(JobRunnerAdapter):
         else:
             return arteria_status
 
-    # TODO: At the moment `status_all()` will not re-write the return code from dsmc as with `status()`.
+    # TODO: At the moment `status_all()` will not re-write the return code
+    # from dsmc as with `status()`.
     def status_all(self):
         jobs_and_status = {}
         for k, v in self.server.get_status_all().iteritems():

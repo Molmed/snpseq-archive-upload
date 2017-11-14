@@ -1,1 +1,1 @@
-/data/home/johhe377-local/repod/arteria/snpseq-archive-upload/tests/resources/testrunfolder/directory2/file.txt
+../../../testrunfolder/directory2/file.txt

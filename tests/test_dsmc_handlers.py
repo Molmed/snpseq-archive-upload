@@ -1,6 +1,7 @@
 
 import json
 import mock
+import shutil
 import subprocess
 import uuid
 
@@ -147,17 +148,20 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertTrue(first_created_at < second_created_at)
         self.assertFalse(os.path.exists(os.path.join(archive_path, "remove-me")))
 
-        import shutil
         shutil.rmtree(archive_path)
 
     def test_create_dir_on_biotank(self):
         body = {"remove": "False"}
         header = {"Host": "biotank42"}
+        root = self.dummy_config["monitored_directory"]
+        runfolder = "testrunfolder"
+        path_to_runfolder = os.path.abspath(os.path.join(root, runfolder))
 
         with mock.patch("archive_upload.handlers.dsmc_handlers.CreateDirHandler._verify_unaligned") as mock__unaligned:
             mock__unaligned.return_value = False
-            response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body), headers=header)
+            response = self.fetch(self.API_BASE + "/create_dir/" + runfolder, method="POST", body=json_encode(body), headers=header)
 
+        mock__unaligned.assert_called_with(path_to_runfolder)
         self.assertEqual(response.code, 500)
         json_resp = json.loads(response.body)
         self.assertEqual(json_resp["state"], State.ERROR)
@@ -409,8 +413,6 @@ echo uggla
         self.assertEqual(len(uploaded.symmetric_difference(exp_upload)), 0)
 
     def test_compress_archive_full(self):
-        import shutil
-
         root = self.dummy_config["path_to_archive_root"]
         archive_path = os.path.join(root, "johanhe_test_archive")
         original = os.path.join(root, "johanhe_test_runfolder")
@@ -431,7 +433,6 @@ echo uggla
         shutil.rmtree(archive_path)
 
     def test_compress_archive_mini(self):
-        import shutil
         root = self.dummy_config["path_to_archive_root"]
         archive_path = os.path.join(root, "testrunfolder_archive_tmp")
         original = os.path.join(root, "testrunfolder_archive_input")

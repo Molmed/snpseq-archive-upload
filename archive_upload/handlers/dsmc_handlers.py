@@ -9,15 +9,18 @@ import shutil
 import tarfile
 import uuid
 
-from arteria.exceptions import ArteriaUsageException
 from arteria.web.state import State
 from arteria.web.handlers import BaseRestHandler
 
 from archive_upload import __version__ as version
 from archive_upload.lib.jobrunner import LocalQAdapter
 
+from tornado import web
+
 log = logging.getLogger(__name__)
 
+class ArchiveException(web.HTTPError):
+    pass
 
 class BaseDsmcHandler(BaseRestHandler):
 
@@ -84,16 +87,14 @@ class BaseDsmcHandler(BaseRestHandler):
             log.info("Removing empty folder: {}".format(path))
             os.rmdir(path)
 
-    def abort(self, msg, code=500):
-        log.debug(msg)
-        self.set_status(code, reason=msg)
+    def write_error(self, status_code, **kwargs):
+        self.set_header("Content-Type", "application/json")
         response_data = {
             "service_version": version,
                 "state": State.ERROR,
-                "msg": msg}
-        self.write_object(response_data)
-        self.finish()
-
+                "http_code": status_code,
+                "msg": self._reason}
+        self.finish(response_data)
 
 class VersionHandler(BaseDsmcHandler):
 
@@ -129,16 +130,16 @@ class ReuploadHelper(object):
         dsmc_out = dsmc_out.splitlines()
 
         if p.returncode != 0:
-            raise ArteriaUsageException(
-                "Error when getting description from PDC. dsmc returned != 0. Output:".format(dsmc_out))
+            msg = "Error when getting description from PDC. dsmc returned != 0. Output:".format(dsmc_out)
+            raise ArchiveException(reason=msg, status_code=500)
 
         log.debug("Raw output from dsmc: {}".format(dsmc_out))
 
         uploaded_versions = [line.strip() for line in dsmc_out if path_to_archive in line]
 
         if not uploaded_versions:
-            raise ArteriaUsageException(
-                "Error when getting description from PDC. No descriptions available for {}".format(path_to_archive))
+            msg = "Error when getting description from PDC. No descriptions available for {}".format(path_to_archive)
+            raise ArchiveException(reason=msg, status_code=400)
 
         log.debug(
             "Found the following uploaded versions of this archive: {}".format(uploaded_versions))
@@ -203,16 +204,16 @@ class ReuploadHelper(object):
         dsmc_out = dsmc_out.splitlines()
 
         if p.returncode != 0:
-            raise ArteriaUsageException(
-                "Error when getting filelist from PDC. Output:".format(dsmc_out))
+            msg = "Error when getting filelist from PDC. Output:".format(dsmc_out)
+            raise ArchiveException(reason=msg, status_code=500)
 
         # We're only interested in the lines from the dsmc output that contains the
         # path to the archive.
         matched_lines = [line.strip() for line in dsmc_out if path_to_archive in line]
 
         if not matched_lines:
-            raise ArteriaUsageException(
-                "Error when getting filelist from PDC. No files uploaded for {}".format(path_to_archive))
+            msg = "Error when getting filelist from PDC. No files uploaded for {}".format(path_to_archive)
+            raise ArchiveException(reason=msg, status_code=400)
 
         log.debug("Uploaded files to PDC: {}".format(matched_lines))
 
@@ -251,8 +252,8 @@ class ReuploadHelper(object):
                 local_files[full_path] = int(local_size)
 
         if not local_files:
-            raise ArteriaUsageException(
-                "Error when generating local filelist. No files found for {}".format(path_to_archive))
+            msg = "Error when generating local filelist. No files found for {}".format(path_to_archive)
+            raise ArchiveException(reason=msg, status_code=400)
 
         log.debug("Local files for the archive are {}".format(local_files))
 
@@ -347,14 +348,14 @@ class ReuploadHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, monitored_dir):
             msg = "Error when validating runfolder. {} is not found under {}.".format(
                 runfolder_archive, monitored_dir)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=500)
 
         dsmc_log_dir = "{}/dsmc_{}".format(dsmc_log_root_dir, runfolder_archive)
 
@@ -424,7 +425,7 @@ class UploadHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, monitored_dir):
             msg = "Error when validating runfolder. {} is not found under {}".format(
                 runfolder_archive, monitored_dir)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
@@ -432,7 +433,7 @@ class UploadHandler(BaseDsmcHandler):
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=500)
 
         dsmc_log_dir = "{}/dsmc_{}".format(dsmc_log_root_dir, runfolder_archive)
 
@@ -485,7 +486,7 @@ class GenChecksumsHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(runfolder_archive, path_to_archive_root):
             msg = "Error when validating runfolder. {} is not found under {}".format(
                 runfolder_archive, path_to_archive_root)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         path_to_archive = os.path.join(path_to_archive_root, runfolder_archive)
         filename = "checksums_prior_to_pdc.md5"
@@ -609,7 +610,7 @@ class CreateDirHandler(BaseDsmcHandler):
         except OSError, msg:
             errmsg = "Error when creating archive directory: {}".format(msg)
             log.debug(errmsg)
-            raise ArteriaUsageException(errmsg)
+            raise ArchiveException(reason=errmsg, status_code=500)
 
     def post(self, runfolder):
         """
@@ -635,35 +636,31 @@ class CreateDirHandler(BaseDsmcHandler):
             request_data = json.loads(self.request.body)
             remove = eval(request_data["remove"])  # str2bool
         except (ValueError, KeyError):
-            self.abort(missing_rm_msg)
+            raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
         if not isinstance(remove, bool):
-            self.abort(missing_rm_msg)
+            raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
         if not self._validate_runfolder_exists(runfolder, monitored_dir):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(
                 runfolder, monitored_dir)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         my_host = self.request.headers.get('Host')
 
         if "biotank" in my_host and not self._verify_unaligned(path_to_runfolder):
-            msg = "Error when validating Unaligned. Unaligned symlink {} broken or missing.".format(
-                path_to_runfolder, "Unaligned")
-            self.abort(msg)
+            msg = "Error when validating Unaligned. Unaligned symlink {} broken or missing.".format(path_to_runfolder, "Unaligned")
+            raise ArchiveException(reason=msg, status_code=500)
 
         if not self._verify_dest(path_to_archive, remove):
             msg = "Error when validating destination path {} (remove={})".format(
                 path_to_archive, remove)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=500)
 
-        try:
-            log.info("Creating a new archive {}...".format(path_to_archive))
-            os.mkdir(path_to_archive)
-            self._create_archive(
-                path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
-        except ArteriaUsageException, msg:
-            self.abort("Error when creating archive dir: {}".format(msg))
+        log.info("Creating a new archive {}...".format(path_to_archive))
+        os.mkdir(path_to_archive)
+        self._create_archive(
+            path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
 
         response_data = {"service_version": version, "state": State.DONE}
 
@@ -693,7 +690,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
         if not self._validate_runfolder_exists(archive, path_to_archive_root):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(
                 archive, path_to_archive_root)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         tarball_path = "{}.tar.gz".format(os.path.join(path_to_archive, archive))
 
@@ -701,7 +698,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
         if os.path.exists(tarball_path):
             msg = "Error when creating archive tarball. {} already exists.".format(tarball_path)
-            self.abort(msg)
+            raise ArchiveException(reason=msg, status_code=400)
 
         def exclude_content(tarinfo):
             """
@@ -745,9 +742,8 @@ class CompressArchiveHandler(BaseDsmcHandler):
                         self._rm_empty_dirs(filepath)
 
                 except OSError, e:
-                    msg = "Error when creating archive tarball. Could not remove file {}: {}".format(
-                        filepath, e)
-                    self.abort(msg)
+                    msg = "Error when creating archive tarball. Could not remove file {}: {}".format(filepath, e)
+                    raise ArchiveException(reason=msg, status_code=500)
 
         response_data = {"service_version": version, "state": State.DONE}
         self.set_status(200, reason="Finished creating the tarball")
@@ -801,7 +797,7 @@ class StatusHandler(BaseDsmcHandler):
 #                self.runner_service.stop(job_id)
 #                self.set_status(200)
 #            else:
-#                ArteriaUsageException("Unknown job to stop")
-#        except ArteriaUsageException as e:
+#                ArchiveException("Unknown job to stop")
+#        except ArchiveException as e:
 #            log.warning("Failed stopping job: {}. Message: ".format(job_id, e.message))
 #            self.send_error(500, reason=e.message)

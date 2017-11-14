@@ -13,11 +13,10 @@ from tornado.web import Application
 from tornado.escape import json_encode
 
 from arteria.web.state import State
-from arteria.exceptions import ArteriaUsageException
 
 from archive_upload.app import routes
 from archive_upload import __version__ as archive_upload_version
-from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler
+from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException
 from archive_upload.lib.jobrunner import LocalQAdapter
 from tests.test_utils import DummyConfig
 
@@ -168,14 +167,14 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
 
     def test_create_dir_missing_body(self):
         resp = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", allow_nonstandard_methods=True)
-        self.assertEqual(resp.code, 500)
+        self.assertEqual(resp.code, 400)
         json_resp = json.loads(resp.body)
         self.assertEqual(json_resp["state"], State.ERROR)
 
     def test_create_dir_missing_remove(self):
         body = {"foo": "bar"}
         resp = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        self.assertEqual(resp.code, 500)
+        self.assertEqual(resp.code, 400)
         json_resp = json.loads(resp.body)
         self.assertEqual(json_resp["state"], State.ERROR)
 
@@ -248,7 +247,7 @@ cat tests/resources/dsmc_output/dsmc_descr.txt
         self.assertEqual(descr, "e374bd6b-ab36-4f41-94d3-f4eaea9f30d4")
 
 
-    @raises(ArteriaUsageException)
+    @raises(ArchiveException)
     def test_get_pdc_descr_failing_proc(self):
         self.scripts = mockprocess.MockProc()
         helper = ReuploadHelper()
@@ -259,7 +258,7 @@ cat tests/resources/dsmc_output/dsmc_descr.txt
             archive_path = "/foo"
             descr = helper.get_pdc_descr(archive_path, dsmc_log_dir="")
 
-    @raises(ArteriaUsageException)
+    @raises(ArchiveException)
     def test_get_pdc_descr_no_results(self):
         self.scripts = mockprocess.MockProc()
         helper = ReuploadHelper()
@@ -294,7 +293,7 @@ cat tests/resources/dsmc_output/dsmc_pdc_filelist.txt
 
             self.assertEqual(len(filelist.keys()), nr_of_files)
 
-    @raises(ArteriaUsageException)
+    @raises(ArchiveException)
     def test_get_pdc_filelist_failing_proc(self):
         self.scripts = mockprocess.MockProc()
         helper = ReuploadHelper()
@@ -305,7 +304,7 @@ cat tests/resources/dsmc_output/dsmc_pdc_filelist.txt
             archive_path = "foo"
             filelist = helper.get_pdc_filelist(archive_path, "foo-bar", dsmc_log_dir="")
 
-    @raises(ArteriaUsageException)
+    @raises(ArchiveException)
     def test_get_pdc_filelist_no_result(self):
         self.scripts = mockprocess.MockProc()
         helper = ReuploadHelper()
@@ -337,7 +336,7 @@ echo uggla
 
         self.assertEqual(len(files.keys()), len(du_out))
 
-    @raises(ArteriaUsageException)
+    @raises(ArchiveException)
     def test_get_local_filelist_no_result(self):
         uniq_id = str(uuid.uuid4())
         tmpdir = "/tmp/testcase-{}".format(uniq_id)

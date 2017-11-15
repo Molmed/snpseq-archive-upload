@@ -120,7 +120,7 @@ class ReuploadHelper(object):
         Fetches the archive `description` label from PDC.
 
         :param path_to_archive: The path to the archive uploaded that we want to get the description for
-        :return: A dsmc description if successful, otherwise a FOO
+        :return: A dsmc description if successful, raises ArchiveException otherwise
         """
         log.info("Fetching description for latest upload of {} to PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc q ar {}".format(dsmc_log_dir, path_to_archive)
@@ -192,7 +192,7 @@ class ReuploadHelper(object):
 
         :param path_to_archive: The path to the archive
         :param descr: The description label for the uploaded archive
-        :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes
+        :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes. Raises ArchiveException if there was an error. 
         """
         log.info("Fetching remote filelist for {} from PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc q ar {}/ -subdir=yes -description={}".format(
@@ -204,7 +204,7 @@ class ReuploadHelper(object):
         dsmc_out = dsmc_out.splitlines()
 
         if p.returncode != 0:
-            msg = "Error when getting filelist from PDC. Output:".format(dsmc_out)
+            msg = "Error when getting filelist from PDC. Output: {}".format(dsmc_out)
             raise ArchiveException(reason=msg, status_code=500)
 
         # We're only interested in the lines from the dsmc output that contains the
@@ -241,7 +241,7 @@ class ReuploadHelper(object):
         Gets the list of all files and their sizes in the local archive.
 
         :param path_to_archive: The path to the local archive
-        :return: The dict `local_files` that maps between local file and size in bytes
+        :return: The dict `local_files` that maps between local file and size in bytes. Raises an ArchiveException if there was an error. 
         """
         log.info("Generating local filelist for {}...".format(path_to_archive))
         local_files = {}
@@ -338,7 +338,7 @@ class ReuploadHandler(BaseDsmcHandler):
         Job is run in the background to be polled by the status endpoint.
 
         :param runfolder_archive: the archive we want to re-upload
-        :return: HTTP 200 if nothing to reupload, HTTP 202 if reupload started successfully, with a `job_id` to be used for later polling,
+        :return: HTTP 400 if nothing to reupload (as it is unexpected from the client's perspective), HTTP 202 if reupload started successfully, with a `job_id` to be used for later polling,
                  HTTP 500 if unexpected error detected.
 
         """
@@ -416,8 +416,7 @@ class UploadHandler(BaseDsmcHandler):
         Job is run in the background to be polled by the status endpoint.
 
         :param runfolder_archive: the name of the archive that we want to upload
-        :return: HTTP 202 if the upload as started successfully, with a `job_id` to be used for later status polling,
-                 HTTP 500 if an unexpected error was encountered
+        :return: HTTP 202 if the upload as started successfully, with a `job_id` to be used for later status polling, HTTP 400 or HTTP 500 if an unexpected error was encountered
         """
 
         monitored_dir = self.config["path_to_archive_root"]
@@ -476,8 +475,7 @@ class GenChecksumsHandler(BaseDsmcHandler):
         Job is run in the background to be polled by the status endpoint.
 
         :param runfolder_archive: Name of the runfolder archive
-        :returns: HTTP 202 if checksum job has started successfully, with a `job_id` to be used in later polling,
-                  HTTP 500 if an unexpected error was encountered
+        :returns: HTTP 202 if checksum job has started successfully, with a `job_id` to be used in later polling, HTTP 400 or HTTP 500 if an unexpected error was encountered
         """
         path_to_archive_root = os.path.abspath(self.config["path_to_archive_root"])
         log_dir = os.path.abspath(self.config["log_directory"])
@@ -619,7 +617,7 @@ class CreateDirHandler(BaseDsmcHandler):
         :param runfolder: name of the runfolder we want to create an archive dir of
         :param remove: boolean to indicate if we should remove previous archive
         :return: HTTP 200 if runfolder archive was created successfully,
-                 HTTP 500 otherwise
+                 HTTP 400 or HTTP 500 if something unexpected occurred
         """
         monitored_dir = self.config["monitored_directory"]
         path_to_runfolder = os.path.abspath(os.path.join(monitored_dir, runfolder))
@@ -681,7 +679,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
         :param archive: The name of the archive which we should pack together
         :return: HTTP 200 if the tarball was created successfully,
-                 HTTP 500 otherwise
+                 HTTP 400 or HTTP 500 if something unexpected occurred 
 
         """
         path_to_archive_root = self.config["path_to_archive_root"]

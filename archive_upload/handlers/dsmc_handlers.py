@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import socket
 import subprocess
 import shutil
 import tarfile
@@ -192,7 +193,7 @@ class ReuploadHelper(object):
 
         :param path_to_archive: The path to the archive
         :param descr: The description label for the uploaded archive
-        :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes. Raises ArchiveException if there was an error. 
+        :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes. Raises ArchiveException if there was an error.
         """
         log.info("Fetching remote filelist for {} from PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc q ar {}/ -subdir=yes -description={}".format(
@@ -241,7 +242,7 @@ class ReuploadHelper(object):
         Gets the list of all files and their sizes in the local archive.
 
         :param path_to_archive: The path to the local archive
-        :return: The dict `local_files` that maps between local file and size in bytes. Raises an ArchiveException if there was an error. 
+        :return: The dict `local_files` that maps between local file and size in bytes. Raises an ArchiveException if there was an error.
         """
         log.info("Generating local filelist for {}...".format(path_to_archive))
         local_files = {}
@@ -388,7 +389,10 @@ class ReuploadHandler(BaseDsmcHandler):
                 "service_version": version,
                 "link": status_end_point,
                 "state": State.STARTED,
-                "dsmc_log_dir": dsmc_log_dir}
+                "dsmc_log_dir": dsmc_log_dir,
+                "archive_path": path_to_archive,
+                "archive_description": descr,
+                "archive_host": socket.gethostname() }
 
             self.set_status(202, reason="started reuploading")
         else:
@@ -457,7 +461,10 @@ class UploadHandler(BaseDsmcHandler):
             "service_version": version,
             "link": status_end_point,
             "state": State.STARTED,
-            "dsmc_log_dir": dsmc_log_dir}
+            "dsmc_log_dir": dsmc_log_dir,
+            "archive_path": path_to_archive,
+            "archive_description": uniq_id,
+            "archive_host": socket.gethostname() }
 
         self.set_status(202, reason="started processing")
         self.write_object(response_data)
@@ -679,7 +686,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
         :param archive: The name of the archive which we should pack together
         :return: HTTP 200 if the tarball was created successfully,
-                 HTTP 400 or HTTP 500 if something unexpected occurred 
+                 HTTP 400 or HTTP 500 if something unexpected occurred
 
         """
         path_to_archive_root = self.config["path_to_archive_root"]

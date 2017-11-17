@@ -1,0 +1,1 @@
+../../../testrunfolder/directory2/file.txt

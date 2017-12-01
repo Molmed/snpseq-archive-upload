@@ -82,6 +82,9 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertEqual(json_resp["job_id"], job_id)
         self.assertEqual(json_resp["service_version"], archive_upload_version)
 
+        import socket
+        self.assertEqual(json_resp["archive_host"], socket.gethostname())
+
         expected_link = "http://localhost:{0}/api/1.0/status/".format(self.get_http_port())
         self.assertTrue(expected_link in json_resp["link"])
         self.assertEqual(json_resp["state"], State.STARTED)

@@ -102,7 +102,7 @@ class LocalQAdapter(JobRunnerAdapter):
     def stop_all(self):
         return self.server.stop_all_jobs()
 
-    def _parse_dsmc_return_code(job):
+    def _parse_dsmc_return_code(self, job):
         log.debug("DSMC process returned an error!")
 
         # DSMC sets return code to 8 when a warning was encountered.
@@ -121,7 +121,7 @@ class LocalQAdapter(JobRunnerAdapter):
                     for match in matches:
                         warnings.append(match)
 
-                log.debug("Warnings found in DSMC output: {}".format(warnings))
+                log.debug("Warnings found in DSMC output: {}".format(set(warnings)))
 
                 for warning in warnings:
                     if warning not in self.whitelisted_warnings:

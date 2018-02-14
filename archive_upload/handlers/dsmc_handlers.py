@@ -736,19 +736,43 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
         # Remove files that we added to the tarball.
         with tarfile.open(tarball_path) as tar:
-            for member in tar.getmembers():
-                try:
-                    filepath = os.path.normpath(
-                        os.path.join(path_to_archive_root, archive, member.name))
+            # restore the original paths for the members in the tarball
+            original_member_paths = map(
+                lambda m: os.path.normpath(os.path.join(path_to_archive, m.name)),
+                tar.getmembers())
+            # walk down the archive (do not follow links!) and remove links that have been included in the tarball
+            # this way seems safer than just iterating over the members in the tarball
+            files_to_remove = []
+            dirs_to_remove_if_empty = []
+            for dirpath, subdirs, dirfiles in os.walk(path_to_archive, followlinks=False):
+                dpath = os.path.normpath(dirpath)
+                for path_list, walked_paths in [(files_to_remove, dirfiles), (dirs_to_remove_if_empty, subdirs)]:
+                    path_list.extend(
+                        filter(
+                            lambda p: p in original_member_paths,
+                            map(
+                                lambda f: os.path.join(dpath, f),
+                                walked_paths)))
+            # remove the files first, then directories
+            for file_to_remove in files_to_remove:
+                if os.path.isfile(file_to_remove):
+                    try:
+                        os.remove(file_to_remove)
+                    except OSError as e:
+                        msg = "Error when creating archive tarball. Could not remove file {}: {}".format(
+                            file_to_remove, e)
+                        raise ArchiveException(reason=msg, status_code=500)
 
-                    if os.path.isfile(filepath):
-                        os.remove(filepath)
-                    elif member.name != "." and os.path.isdir(filepath):
-                        self._rm_empty_dirs(filepath)
-
-                except OSError, e:
-                    msg = "Error when creating archive tarball. Could not remove file {}: {}".format(filepath, e)
-                    raise ArchiveException(reason=msg, status_code=500)
+            # reverse sorting the normalized directory paths by length
+            # will ensure that we will remove subdirectories first
+            for dir_to_remove_if_empty in sorted(dirs_to_remove_if_empty, key=len, reverse=True):
+                if os.path.isdir(dir_to_remove_if_empty):
+                    try:
+                        os.rmdir(dir_to_remove_if_empty)
+                    except OSError as e:
+                        log.debug(
+                            "directory {} not removed, probably because it is not empty".format(
+                                dir_to_remove_if_empty))
 
         response_data = {"service_version": version, "state": State.DONE}
         self.set_status(200, reason="Finished creating the tarball")

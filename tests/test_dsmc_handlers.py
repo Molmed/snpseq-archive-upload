@@ -19,6 +19,7 @@ from archive_upload.app import routes
 from archive_upload import __version__ as archive_upload_version
 from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException, CompressArchiveHandler
 from archive_upload.lib.jobrunner import LocalQAdapter
+from archive_upload.lib.utils import FileUtils
 from tests.test_utils import TestUtils, DummyConfig
 
 
@@ -491,9 +492,9 @@ echo uggla
             self.assertListEqual([os.path.relpath(tarball_archive_path, archive_path)], os.listdir(archive_path))
 
             # verify that all files in the original file tree are present in the tarball
-            entries_in_archive = CompressArchiveHandler.source_paths_from_tarball(tarball_archive_path, original)
+            entries_in_archive = FileUtils.source_paths_from_tarball(tarball_archive_path, original)
             entries_in_original = \
-                BaseDsmcHandler._list_all_paths(original) + [original]
+                FileUtils.list_all_paths(original) + [original]
             self.assertListEqual(
                 sorted(map(os.path.normpath, entries_in_original)),
                 sorted(map(os.path.normpath, entries_in_archive)))
@@ -502,24 +503,3 @@ echo uggla
         finally:
             shutil.rmtree(archive_path)
             self.dummy_config = DummyConfig()
-
-
-class TestHandlerStaticMethods(unittest.TestCase):
-
-    def setUp(self):
-        self.dummy_config = DummyConfig()
-
-    @mock.patch.object(CompressArchiveHandler, "source_paths_from_tarball", new_callable=mock.MagicMock)
-    def test_paths_duplicated_in_tarball(self, handler_mock):
-        root = self.dummy_config["path_to_archive_root"]
-        original = os.path.join(root, "testrunfolder_archive_input")
-        tarball_paths = [
-            os.path.join(original, "file.csv"),
-            os.path.join(original, "directory3", "file.zip"),
-            os.path.join(original, "directory3"),
-            os.path.join(original, "directory2", "file.txt"),
-            os.path.join(original, "directory2")
-        ]
-        handler_mock.return_value = tarball_paths
-        duplicated_paths = CompressArchiveHandler.paths_duplicated_in_tarball(None, original)
-        self.assertListEqual(tarball_paths, duplicated_paths)

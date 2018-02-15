@@ -493,7 +493,7 @@ echo uggla
             # verify that all files in the original file tree are present in the tarball
             entries_in_archive = CompressArchiveHandler.source_paths_from_tarball(tarball_archive_path, original)
             entries_in_original = \
-                BaseDsmcHandler._list_all_files(original) + BaseDsmcHandler._list_all_folders(original) + [original]
+                BaseDsmcHandler._list_all_paths(original) + [original]
             self.assertListEqual(
                 sorted(map(os.path.normpath, entries_in_original)),
                 sorted(map(os.path.normpath, entries_in_archive)))
@@ -514,13 +514,12 @@ class TestHandlerStaticMethods(unittest.TestCase):
         root = self.dummy_config["path_to_archive_root"]
         original = os.path.join(root, "testrunfolder_archive_input")
         tarball_paths = [
-            os.path.join(original, "directory3"),
-            os.path.join(original, "directory2"),
             os.path.join(original, "file.csv"),
             os.path.join(original, "directory3", "file.zip"),
-            os.path.join(original, "directory2", "file.txt")
+            os.path.join(original, "directory3"),
+            os.path.join(original, "directory2", "file.txt"),
+            os.path.join(original, "directory2")
         ]
         handler_mock.return_value = tarball_paths
-        duplicated_files, duplicated_folders = CompressArchiveHandler.paths_duplicated_in_tarball(None, original)
-        self.assertListEqual(tarball_paths[2:], duplicated_files)
-        self.assertListEqual(tarball_paths[0:2], duplicated_folders)
+        duplicated_paths = CompressArchiveHandler.paths_duplicated_in_tarball(None, original)
+        self.assertListEqual(tarball_paths, duplicated_paths)

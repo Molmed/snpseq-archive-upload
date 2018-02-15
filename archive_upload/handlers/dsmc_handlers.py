@@ -89,51 +89,24 @@ class BaseDsmcHandler(BaseRestHandler):
             os.rmdir(path)
 
     @staticmethod
-    def _list_all_files(path, followlinks=False):
+    def _list_all_paths(path, followlinks=False):
         """
-        Recursively traverse the supplied folder with os.walk and return a list of full paths to all files
-        beneath the path. Essentially equivalent to `find path -type f`. Note that symlinks pointing to files are
+        Recursively traverse the supplied folder with os.walk and return a list of full paths to all files and folders
+        beneath the path. Essentially equivalent to `find path`. Note that symlinks pointing to files are
         returned as well.
 
-        The returned list will be sorted in reverse lexical order, meaning that files in subdirectories will come
+        The returned list will be sorted in reverse lexical order, meaning that paths in subdirectories will come
         before the parent directories
 
         :param path: folder, beneath which to list all files
         :param followlinks: if True, follow symlinks to directories (default False)
-        :return: a list of full paths to files discovered with os.walk
+        :return: a list of full paths discovered with os.walk
         """
-        return BaseDsmcHandler.__list_all_helper(path, "f", followlinks=followlinks)
 
-    @staticmethod
-    def _list_all_folders(path, followlinks=False):
-        """
-        Recursively traverse the supplied folder with os.walk and return a list of full paths to all folders
-        beneath the path. Essentially equivalent to `find path -type d`.
-
-        The returned list will be sorted in reverse lexical order, meaning that subdirectories will come
-        before the parent directories
-
-        :param path: folder, beneath which to list all folders
-        :param followlinks: if True, follow symlinks to directories (default False)
-        :return: a list of full paths to folders discovered with os.walk
-        """
-        return BaseDsmcHandler.__list_all_helper(path, "d", followlinks=followlinks)
-
-    @staticmethod
-    def __list_all_helper(path, path_type, followlinks=False):
-        """
-        Helper method to the _list_all_files and _list_all_folders methods
-        """
-        all_files = []
-        all_folders = []
+        all_paths = []
         for dirpath, subdirs, dirfiles in os.walk(os.path.normpath(path), followlinks=followlinks):
-            all_files.extend(map(lambda f: os.path.join(dirpath, f), dirfiles))
-            all_folders.extend(map(lambda f: os.path.join(dirpath, f), subdirs))
-        if path_type == "f":
-            return sorted(all_files, reverse=True)
-        elif path_type == "d":
-            return sorted(all_folders, reverse=True)
-        raise ValueError("'{}' is not a valid path_type".format(path_type))
+            all_paths.extend(map(lambda f: os.path.join(dirpath, f), dirfiles + subdirs))
+        return sorted(all_paths, reverse=True)
 
     def write_error(self, status_code, **kwargs):
         self.set_header("Content-Type", "application/json")
@@ -743,24 +716,22 @@ class CompressArchiveHandler(BaseDsmcHandler):
     @staticmethod
     def paths_duplicated_in_tarball(tarball, path_to_archive):
         """
-        List the files and folders in the supplied folder and its subdirectories and return a tuple with
-        files and folders that are present in the supplied tarball, assuming that the tarball is rooted
+        List the files and folders in the supplied folder and its subdirectories and return the paths
+        that are present in the supplied tarball, assuming that the tarball is rooted
         at the supplied folder.
 
         :param tarball: a tarball whose members are rooted at the supplied path
         :param path_to_archive: path to search for files and folders duplicated in the tarball
-        :return: a tuple of duplicated files and duplicated folders, sorted in reverse lexical order
+        :return: a list of duplicated files and folders, sorted in reverse lexical order
         """
         # list the paths in the tarball and store as a set
         paths_in_tarball = set(CompressArchiveHandler.source_paths_from_tarball(tarball, path_to_archive))
-        files_in_source_archive = BaseDsmcHandler._list_all_files(path_to_archive, followlinks=False)
-        folders_in_source_archive = BaseDsmcHandler._list_all_folders(path_to_archive, followlinks=False)
+        paths_in_source_archive = BaseDsmcHandler._list_all_paths(path_to_archive, followlinks=False)
 
         # duplicated paths are present in tarball and on disk, so take the intersection of the lists
-        duplicated_files = paths_in_tarball.intersection(files_in_source_archive)
-        duplicated_folders = paths_in_tarball.intersection(folders_in_source_archive)
+        duplicated_paths = paths_in_tarball.intersection(paths_in_source_archive)
 
-        return sorted(list(duplicated_files), reverse=True), sorted(list(duplicated_folders), reverse=True)
+        return sorted(list(duplicated_paths), reverse=True)
 
     def post(self, archive):
         """
@@ -820,11 +791,10 @@ class CompressArchiveHandler(BaseDsmcHandler):
         # Remove files that were added to the tarball
 
         # get a list of files and folders duplicated between the tarball and the archive
-        files_to_remove, folders_to_remove_if_empty = CompressArchiveHandler.paths_duplicated_in_tarball(
-            tarball_path, path_to_archive)
+        paths_to_remove = CompressArchiveHandler.paths_duplicated_in_tarball(tarball_path, path_to_archive)
 
         # remove the files first
-        for file_to_remove in filter(os.path.isfile, files_to_remove):
+        for file_to_remove in filter(os.path.isfile, paths_to_remove):
             try:
                 os.remove(file_to_remove)
             except OSError as e:
@@ -834,7 +804,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
                         file_to_remove, e))
 
         # then the directories
-        for dir_to_remove_if_empty in filter(os.path.isdir, folders_to_remove_if_empty):
+        for dir_to_remove_if_empty in filter(os.path.isdir, paths_to_remove):
             try:
                 os.rmdir(dir_to_remove_if_empty)
             except OSError as e:

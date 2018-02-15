@@ -17,7 +17,7 @@ from arteria.web.state import State
 
 from archive_upload.app import routes
 from archive_upload import __version__ as archive_upload_version
-from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException
+from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException, CompressArchiveHandler
 from archive_upload.lib.jobrunner import LocalQAdapter
 from tests.test_utils import TestUtils, DummyConfig
 
@@ -491,13 +491,9 @@ echo uggla
             self.assertListEqual([os.path.relpath(tarball_archive_path, archive_path)], os.listdir(archive_path))
 
             # verify that all files in the original file tree are present in the tarball
-            with tarfile.open(tarball_archive_path) as tar:
-                entries_in_archive = [m.name for m in tar.getmembers()]
-            entries_in_original = []
-            for dirpath, _, files in os.walk(original):
-                dpath = os.path.relpath(dirpath, original)
-                entries_in_original.extend([os.path.join(dpath, f) for f in files])
-                entries_in_original.append(dpath)
+            entries_in_archive = CompressArchiveHandler.source_paths_from_tarball(tarball_archive_path, original)
+            entries_in_original = \
+                BaseDsmcHandler._list_all_files(original) + BaseDsmcHandler._list_all_folders(original) + [original]
             self.assertListEqual(
                 sorted(map(os.path.normpath, entries_in_original)),
                 sorted(map(os.path.normpath, entries_in_archive)))
@@ -506,3 +502,25 @@ echo uggla
         finally:
             shutil.rmtree(archive_path)
             self.dummy_config = DummyConfig()
+
+
+class TestHandlerStaticMethods(unittest.TestCase):
+
+    def setUp(self):
+        self.dummy_config = DummyConfig()
+
+    @mock.patch.object(CompressArchiveHandler, "source_paths_from_tarball", new_callable=mock.MagicMock)
+    def test_paths_duplicated_in_tarball(self, handler_mock):
+        root = self.dummy_config["path_to_archive_root"]
+        original = os.path.join(root, "testrunfolder_archive_input")
+        tarball_paths = [
+            os.path.join(original, "directory3"),
+            os.path.join(original, "directory2"),
+            os.path.join(original, "file.csv"),
+            os.path.join(original, "directory3", "file.zip"),
+            os.path.join(original, "directory2", "file.txt")
+        ]
+        handler_mock.return_value = tarball_paths
+        duplicated_files, duplicated_folders = CompressArchiveHandler.paths_duplicated_in_tarball(None, original)
+        self.assertListEqual(tarball_paths[2:], duplicated_files)
+        self.assertListEqual(tarball_paths[0:2], duplicated_folders)

@@ -15,6 +15,7 @@ from arteria.web.handlers import BaseRestHandler
 
 from archive_upload import __version__ as version
 from archive_upload.lib.jobrunner import LocalQAdapter
+from archive_upload.lib.utils import FileUtils
 
 from tornado import web
 
@@ -734,21 +735,27 @@ class CompressArchiveHandler(BaseDsmcHandler):
         log.info("Removing files from {} that were added to {}".format(
             path_to_archive_root, tarball_path))
 
-        # Remove files that we added to the tarball.
-        with tarfile.open(tarball_path) as tar:
-            for member in tar.getmembers():
-                try:
-                    filepath = os.path.normpath(
-                        os.path.join(path_to_archive_root, archive, member.name))
+        # Remove files that were added to the tarball
 
-                    if os.path.isfile(filepath):
-                        os.remove(filepath)
-                    elif member.name != "." and os.path.isdir(filepath):
-                        self._rm_empty_dirs(filepath)
+        # get a list of files and folders duplicated between the tarball and the archive
+        paths_to_remove = FileUtils.paths_duplicated_in_tarball(tarball_path, path_to_archive)
 
-                except OSError, e:
-                    msg = "Error when creating archive tarball. Could not remove file {}: {}".format(filepath, e)
-                    raise ArchiveException(reason=msg, status_code=500)
+        # remove the files first
+        for file_to_remove in filter(os.path.isfile, paths_to_remove):
+            try:
+                os.remove(file_to_remove)
+            except OSError as e:
+                raise ArchiveException(
+                    status_code=500,
+                    reason="Error when creating archive tarball. Could not remove file {}: {}".format(
+                        file_to_remove, e))
+
+        # then the directories
+        for dir_to_remove_if_empty in filter(os.path.isdir, paths_to_remove):
+            try:
+                os.rmdir(dir_to_remove_if_empty)
+            except OSError as e:
+                log.debug("directory {} not removed, probably because it is not empty".format(dir_to_remove_if_empty))
 
         response_data = {"service_version": version, "state": State.DONE}
         self.set_status(200, reason="Finished creating the tarball")

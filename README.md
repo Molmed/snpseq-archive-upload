@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/Molmed/snpseq-archive-upload.svg?branch=master)](https://travis-ci.org/Molmed/snpseq-archive-upload)
+
 Archive Upload
 =================
 

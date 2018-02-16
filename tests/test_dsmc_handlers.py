@@ -3,6 +3,7 @@ import json
 import mock
 import shutil
 import subprocess
+import tarfile
 import uuid
 
 from nose.tools import *
@@ -16,9 +17,11 @@ from arteria.web.state import State
 
 from archive_upload.app import routes
 from archive_upload import __version__ as archive_upload_version
-from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException
+from archive_upload.handlers.dsmc_handlers import VersionHandler, UploadHandler, StatusHandler, ReuploadHandler, CreateDirHandler, GenChecksumsHandler, ReuploadHelper, BaseDsmcHandler, ArchiveException, CompressArchiveHandler
 from archive_upload.lib.jobrunner import LocalQAdapter
-from tests.test_utils import DummyConfig
+from archive_upload.lib.utils import FileUtils
+from tests.test_utils import TestUtils, DummyConfig
+
 
 class TestDsmcHandlers(AsyncHTTPTestCase):
 
@@ -450,7 +453,53 @@ echo uggla
 
         self.assertTrue(os.path.exists(os.path.join(archive_path, "file.csv")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "file.bin")))
-        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2")))
+        self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory3")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "testrunfolder_archive_tmp.tar.gz")))
 
         shutil.rmtree(archive_path)
+
+    def test_compress_archive_nothing_excluded(self):
+        """
+        Don't exclude anything
+        """
+        root = self.dummy_config["path_to_archive_root"]
+        archive_path = os.path.join(root, "testrunfolder_archive_tmp")
+        original = os.path.join(root, "testrunfolder_archive_input")
+
+        try:
+            shutil.rmtree(archive_path, ignore_errors=True)
+            shutil.copytree(original, archive_path)
+
+            # update the config to exclude nothing from archive
+            self.dummy_config = TestUtils.DUMMY_CONFIG
+            self.dummy_config["exclude_from_tarball"] = []
+
+            resp = self.fetch(
+                self.API_BASE + "/compress_archive/" + os.path.basename(archive_path),
+                method="POST",
+                allow_nonstandard_methods=True)
+
+            json_resp = json.loads(resp.body)
+            tarball_archive_path = os.path.join(
+                archive_path,
+                "{}.tar.gz".format(
+                    os.path.basename(archive_path)))
+
+            self.assertEqual(State.DONE, json_resp["state"])
+            self.assertEqual(archive_upload_version, json_resp["service_version"])
+            self.assertTrue(os.path.exists(tarball_archive_path))
+            self.assertListEqual([os.path.relpath(tarball_archive_path, archive_path)], os.listdir(archive_path))
+
+            # verify that all files in the original file tree are present in the tarball
+            entries_in_archive = FileUtils.source_paths_from_tarball(tarball_archive_path, original)
+            entries_in_original = \
+                FileUtils.list_all_paths(original) + [original]
+            self.assertListEqual(
+                sorted(map(os.path.normpath, entries_in_original)),
+                sorted(map(os.path.normpath, entries_in_archive)))
+        except Exception as e:
+            raise
+        finally:
+            shutil.rmtree(archive_path)
+            self.dummy_config = DummyConfig()

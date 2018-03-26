@@ -31,13 +31,16 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
 
     runner_service = LocalQAdapter(nbr_of_cores=2, whitelisted_warnings = dummy_config["whitelisted_warnings"], interval = 2, priority_method = "fifo")
 
-    def get_app(self):
+    def get_app(self, config=None):
         return Application(
             routes(
-                config=self.dummy_config,
+                config=config or self.dummy_config,
                 runner_service=self.runner_service))
 
     def test_version(self):
+        """
+        Test version.
+        """
         response = self.fetch(self.API_BASE + "/version")
 
         expected_result = { "version": archive_upload_version }
@@ -428,11 +431,13 @@ echo uggla
         resp = self.fetch(self.API_BASE + "/compress_archive/johanhe_test_archive", method="POST",
                           allow_nonstandard_methods=True)
 
+
         json_resp = json.loads(resp.body)
         self.assertEqual(json_resp["state"], State.DONE)
 
         self.assertFalse(os.path.exists(os.path.join(archive_path, "RunInfo.xml")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "Config")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "SampleSheet.csv")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "johanhe_test_archive.tar.gz")))
 
         shutil.rmtree(archive_path)
@@ -459,7 +464,7 @@ echo uggla
 
         shutil.rmtree(archive_path)
 
-    def test_compress_archive_nothing_excluded(self):
+    def test_compress_archive_exclude(self):
         """
         Don't exclude anything
         """
@@ -472,9 +477,9 @@ echo uggla
             shutil.copytree(original, archive_path)
 
             # update the config to exclude nothing from archive
-            self.dummy_config = TestUtils.DUMMY_CONFIG
+            local_config = TestUtils.DUMMY_CONFIG.copy()
+            self.dummy_config = TestUtils.DUMMY_CONFIG#Create a copy to not change the real config.
             self.dummy_config["exclude_from_tarball"] = []
-
             resp = self.fetch(
                 self.API_BASE + "/compress_archive/" + os.path.basename(archive_path),
                 method="POST",
@@ -502,4 +507,4 @@ echo uggla
             raise
         finally:
             shutil.rmtree(archive_path)
-            self.dummy_config = DummyConfig()
+            TestUtils.DUMMY_CONFIG = local_config

@@ -329,7 +329,7 @@ class ReuploadHelper(object):
 
         log.debug("Written files to reupload to {}".format(reupload_file))
 
-        output_file = self._rename_log_file(dsmc_log_dir)
+        output_file = BaseDsmcHandler._rename_log_file(dsmc_log_dir)
 
         cmd = "export DSM_LOG={} && dsmc archive -filelist={} -description={}".format(
             dsmc_log_dir, reupload_file, descr)

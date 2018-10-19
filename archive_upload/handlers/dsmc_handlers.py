@@ -89,6 +89,24 @@ class BaseDsmcHandler(BaseRestHandler):
             log.info("Removing empty folder: {}".format(path))
             os.rmdir(path)
 
+    @staticmethod
+    def _rename_log_file(log_file):
+        """
+        Add timestamp to existing log-files when the same archive i uploaded or reuploaded several times
+
+        :param log_file:/home/monika/git_workspace/snpseq-archive-upload/tests/resources/archives/test_logs/dsmc_monika_archive
+        :return output_file-name
+        """
+        output_file = "{}/dsmc_output".format(log_file)
+
+        if os.path.isfile(output_file):
+            #add a timestamp if the file dsmc_ouput already exist for the given archive.
+            timestamp = os.path.getmtime(output_file)
+            timestamp_filename = "{}/dsmc_output.{}".format(log_file, timestamp)
+            os.rename(output_file, timestamp_filename)
+
+        return output_file
+
     def write_error(self, status_code, **kwargs):
         self.set_header("Content-Type", "application/json")
         response_data = {
@@ -311,7 +329,7 @@ class ReuploadHelper(object):
 
         log.debug("Written files to reupload to {}".format(reupload_file))
 
-        output_file = "{}/dsmc_output".format(dsmc_log_dir)
+        output_file = self._rename_log_file(dsmc_log_dir)
 
         cmd = "export DSM_LOG={} && dsmc archive -filelist={} -description={}".format(
             dsmc_log_dir, reupload_file, descr)
@@ -444,7 +462,8 @@ class UploadHandler(BaseDsmcHandler):
         if not os.path.exists(dsmc_log_dir):
             os.makedirs(dsmc_log_dir)
 
-        output_file = "{}/dsmc_output".format(dsmc_log_dir)
+
+        output_file = self._rename_log_file(dsmc_log_dir)
 
         log.info("Uploading {} to PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc archive {}/ -subdir=yes -description={}".format(

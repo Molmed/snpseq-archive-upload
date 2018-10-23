@@ -92,17 +92,17 @@ class BaseDsmcHandler(BaseRestHandler):
     @staticmethod
     def _rename_log_file(log_dir):
         """
-        Add timestamp to existing log-files when the same archive i uploaded or reuploaded several times
+        Add timestamp to existing log-files when the same archive is uploaded or reuploaded several times
 
-        :param log_file:/home/monika/git_workspace/snpseq-archive-upload/tests/resources/archives/test_logs/dsmc_monika_archive
+        :param log_dir:/path/to/log-directory/dsmc_<archive name>
         :return output_file-name
         """
-        output_file = "{}/dsmc_output".format(log_dir)
+        output_file = os.path.join(log_dir, "dsmc_output")
 
         if os.path.isfile(output_file):
             #add a timestamp if the file dsmc_ouput already exist for the given archive.
             timestamp = os.path.getmtime(output_file)
-            timestamp_filename = "{}/dsmc_output.{}".format(log_dir, timestamp)
+            timestamp_filename = "{}.{}".format(output_file, timestamp)
             os.rename(output_file, timestamp_filename)
 
         return output_file

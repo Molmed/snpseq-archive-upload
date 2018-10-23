@@ -509,11 +509,11 @@ echo uggla
             shutil.rmtree(archive_path)
             TestUtils.DUMMY_CONFIG = local_config
 
-    @mock.patch("archive_upload.handlers.dsmc_handlers.os.path", autospec=True)
-    def test_rename_log_file_no_file(self, mock_path):
+    @mock.patch("archive_upload.handlers.dsmc_handlers.os.path.isfile", autospec=True)
+    def test_rename_log_file_no_file(self, mock_isfile):
         log_directory = "/log/directory/name_archive"
         expected_log_name = "/log/directory/name_archive/dsmc_output"
-        mock_path.isfile.return_value = False
+        mock_isfile.return_value = False
         self.assertEqual(BaseDsmcHandler._rename_log_file(log_directory), expected_log_name)
 
     def test_rename_log_file_exist(self):

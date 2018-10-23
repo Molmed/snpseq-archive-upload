@@ -508,3 +508,22 @@ echo uggla
         finally:
             shutil.rmtree(archive_path)
             TestUtils.DUMMY_CONFIG = local_config
+
+    @mock.patch("archive_upload.handlers.dsmc_handlers.os.path.isfile", autospec=True)
+    def test_rename_log_file_no_file(self, mock_isfile):
+        log_directory = "/log/directory/name_archive"
+        expected_log_name = "/log/directory/name_archive/dsmc_output"
+        mock_isfile.return_value = False
+        self.assertEqual(BaseDsmcHandler._rename_log_file(log_directory), expected_log_name)
+
+    def test_rename_log_file_exist(self):
+        with mock.patch('archive_upload.handlers.dsmc_handlers.os.rename') as mock_rename, \
+                mock.patch('archive_upload.handlers.dsmc_handlers.os.path.isfile') as mock_isfile, \
+                mock.patch('archive_upload.handlers.dsmc_handlers.os.path.getmtime') as mock_getmtime:
+         mock_isfile.return_value = True
+         log_directory = "/log/directory/name_archive"
+         expected_log_name = "/log/directory/name_archive/dsmc_output"
+         mock_getmtime.return_value = "timestamp"
+         self.assertEqual(BaseDsmcHandler._rename_log_file(log_directory), expected_log_name)
+         mock_rename.assert_called_once_with("/log/directory/name_archive/dsmc_output",
+                                                "/log/directory/name_archive/dsmc_output.timestamp")

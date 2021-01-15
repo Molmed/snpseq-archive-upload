@@ -653,7 +653,7 @@ class CreateDirHandler(BaseDsmcHandler):
             os.path.join(path_to_archive_root, runfolder) + "_archive")
 
         exclude_dirs = self.config["exclude_dirs"]
-        exclude_extensions = self.config["exclude_extensions"]
+        exclude_extensions = [] # self.config["exclude_extensions"]
 
         missing_rm_msg = "Need to provide a True/False for the `remove` field in the HTTP body."
 

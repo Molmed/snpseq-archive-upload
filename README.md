@@ -15,12 +15,24 @@ Trying it out
     source venv/bin/activate
 
     # install dependencies
-    pip install -U -r requirements/prod .
+    pip install -e . -r ./requirements/dev
 
-Try running it:
-
-     archive-upload-ws --config=config/ --port=8181 --debug
+    # start the dev server
+    python server.py --debug --port=8333 --configroot='./config'
 
 And then you can find a simple api documentation with:
 
     curl http://localhost:8181/api
+
+To run the tests:
+
+    nosetests tests/
+
+To run the app in production mode:
+
+    # install dependencies
+    pip install -U -r requirements/prod .
+
+    # start the server
+    archive-upload-ws --config=config/ --port=8181 --debug
+    

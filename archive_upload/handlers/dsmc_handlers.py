@@ -643,6 +643,7 @@ class CreateDirHandler(BaseDsmcHandler):
 
         :param runfolder: name of the runfolder we want to create an archive dir of
         :param remove: boolean to indicate if we should remove previous archive
+        :param exclude_extensions: array of extensions to exclude from the archive (include the dot)
         :return: HTTP 200 if runfolder archive was created successfully,
                  HTTP 400 or HTTP 500 if something unexpected occurred
         """
@@ -653,18 +654,30 @@ class CreateDirHandler(BaseDsmcHandler):
             os.path.join(path_to_archive_root, runfolder) + "_archive")
 
         exclude_dirs = self.config["exclude_dirs"]
-        exclude_extensions = self.config["exclude_extensions"]
+        exclude_extensions = []
 
+        # Messages
+        invalid_body_msg = "Invalid body format."
         missing_rm_msg = "Need to provide a True/False for the `remove` field in the HTTP body."
+        exclude_extensions_msg = "The `exclude_extensions` field must be a list."
 
         try:
             request_data = json.loads(self.request.body)
+        except (ValueError, KeyError):
+            raise ArchiveException(reason=invalid_body_msg, status_code=400)
+
+        try:
             remove = eval(request_data["remove"])  # str2bool
         except (ValueError, KeyError):
             raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
         if not isinstance(remove, bool):
             raise ArchiveException(reason=missing_rm_msg, status_code=400)
+
+        if "exclude_extensions" in request_data:
+            exclude_extensions = request_data["exclude_extensions"]
+            if not isinstance(exclude_extensions, list):
+                raise ArchiveException(reason=exclude_extensions_msg, status_code=400)
 
         if not self._validate_runfolder_exists(runfolder, monitored_dir):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(

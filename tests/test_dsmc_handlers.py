@@ -134,6 +134,17 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertEqual(json_resp["state"], State.DONE)
         self.assertTrue(os.path.exists(archive_path))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory1")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bar")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
+
+        # Exclude extensions
+        body = {"remove": "True", "exclude_extensions": [".bar"]}
+        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
+        json_resp = json.loads(response.body)
+
+        self.assertEqual(json_resp["state"], State.DONE)
+        self.assertTrue(os.path.exists(archive_path))
+        self.assertFalse(os.path.exists(os.path.join(archive_path, "directory1")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2", "file.bar")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 

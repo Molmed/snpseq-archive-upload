@@ -603,7 +603,7 @@ class CreateDirHandler(BaseDsmcHandler):
 
         :param oldtree: Path to the runfolder
         :param newtree: Path to the archive which we are going to create
-        :param exclude_dir: List of directory names to exclude from the archive
+        :param exclude_dirs: List of directory names to exclude from the archive
         :param exclude_extensions: List of file extensions to exclude from the archive
         """
         try:
@@ -643,6 +643,7 @@ class CreateDirHandler(BaseDsmcHandler):
 
         :param runfolder: name of the runfolder we want to create an archive dir of
         :param remove: boolean to indicate if we should remove previous archive
+        :param exclude_dirs: array of directory names to exclude from the archive
         :param exclude_extensions: array of extensions to exclude from the archive (include the dot)
         :return: HTTP 200 if runfolder archive was created successfully,
                  HTTP 400 or HTTP 500 if something unexpected occurred
@@ -653,12 +654,14 @@ class CreateDirHandler(BaseDsmcHandler):
         path_to_archive = os.path.abspath(
             os.path.join(path_to_archive_root, runfolder) + "_archive")
 
+        # Default values come from config file but can be overridden in the POST request.
         exclude_dirs = self.config["exclude_dirs"]
-        exclude_extensions = []
+        exclude_extensions = self.config["exclude_extensions"]
 
         # Messages
         invalid_body_msg = "Invalid body format."
         missing_rm_msg = "Need to provide a True/False for the `remove` field in the HTTP body."
+        exclude_dirs_msg = "The `exclude_dirs` field must be a list."
         exclude_extensions_msg = "The `exclude_extensions` field must be a list."
 
         try:
@@ -673,6 +676,11 @@ class CreateDirHandler(BaseDsmcHandler):
 
         if not isinstance(remove, bool):
             raise ArchiveException(reason=missing_rm_msg, status_code=400)
+
+        if "exclude_dirs" in request_data:
+            exclude_dirs = request_data["exclude_dirs"]
+            if not isinstance(exclude_dirs, list):
+                raise ArchiveException(reason=exclude_dirs_msg, status_code=400)
 
         if "exclude_extensions" in request_data:
             exclude_extensions = request_data["exclude_extensions"]

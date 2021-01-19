@@ -7,7 +7,8 @@ class TestUtils:
         "log_directory": "tests/resources/dsmc_output/", 
         "path_to_archive_root": "tests/resources/archives/",
         "exclude_from_tarball": ["Config", "SampleSheet.csv", "file.csv", "directory3"], 
-        "exclude_dirs": ["directory1"]
+        "exclude_dirs": ["directory1"],
+        "exclude_extensions": [".bar"]
     }
 
 class DummyConfig:

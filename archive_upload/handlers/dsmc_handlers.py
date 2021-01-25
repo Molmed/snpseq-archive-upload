@@ -660,9 +660,9 @@ class CreateDirHandler(BaseDsmcHandler):
 
         # Messages
         invalid_body_msg = "Invalid body format."
-        missing_rm_msg = "Need to provide a True/False for the `remove` field in the HTTP body."
-        exclude_dirs_msg = "The `exclude_dirs` field must be a list."
-        exclude_extensions_msg = "The `exclude_extensions` field must be a list."
+        missing_rm_msg = "Need to provide a boolean for the `remove` field in the HTTP body."
+        exclude_dirs_msg = "The `exclude_dirs` field must be a comma-separated string."
+        exclude_extensions_msg = "The `exclude_extensions` field must be a comma-separated string."
 
         try:
             request_data = json.loads(self.request.body)
@@ -670,7 +670,9 @@ class CreateDirHandler(BaseDsmcHandler):
             raise ArchiveException(reason=invalid_body_msg, status_code=400)
 
         try:
-            remove = eval(request_data["remove"])  # str2bool
+            # This is a rather convoluted solution to booleans potentially
+            # arriving either in JSON format (true) or stringified Python format ("True")
+            remove = eval(("" + request_data["remove"]).capitalize())
         except (ValueError, KeyError):
             raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
@@ -679,13 +681,15 @@ class CreateDirHandler(BaseDsmcHandler):
 
         if "exclude_dirs" in request_data:
             exclude_dirs = request_data["exclude_dirs"]
-            if not isinstance(exclude_dirs, list):
+            if not isinstance(exclude_dirs, basestring):
                 raise ArchiveException(reason=exclude_dirs_msg, status_code=400)
+            exclude_dirs = [dir.strip() for dir in exclude_dirs.split(',')]
 
         if "exclude_extensions" in request_data:
             exclude_extensions = request_data["exclude_extensions"]
-            if not isinstance(exclude_extensions, list):
+            if not isinstance(exclude_extensions, basestring):
                 raise ArchiveException(reason=exclude_extensions_msg, status_code=400)
+            exclude_extensions = [ext.strip() for ext in exclude_extensions.split(',')]
 
         if not self._validate_runfolder_exists(runfolder, monitored_dir):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(

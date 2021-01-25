@@ -139,7 +139,7 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 
         # Exclude parameters in POST request
-        body = {"remove": "True", "exclude_dirs": ["directory3"], "exclude_extensions": [".bin"]}
+        body = {"remove": "True", "exclude_dirs": "directory3, someotherdir", "exclude_extensions": ".bin,.hmm"}
         response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
         json_resp = json.loads(response.body)
 

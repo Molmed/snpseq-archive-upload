@@ -643,8 +643,8 @@ class CreateDirHandler(BaseDsmcHandler):
 
         :param runfolder: name of the runfolder we want to create an archive dir of
         :param remove: boolean to indicate if we should remove previous archive
-        :param exclude_dirs: array of directory names to exclude from the archive
-        :param exclude_extensions: array of extensions to exclude from the archive (include the dot)
+        :param exclude_dirs: comma-separated list of directory names to exclude from the archive
+        :param exclude_extensions: comma-separated list of extensions to exclude from the archive (include the dot)
         :return: HTTP 200 if runfolder archive was created successfully,
                  HTTP 400 or HTTP 500 if something unexpected occurred
         """
@@ -669,14 +669,17 @@ class CreateDirHandler(BaseDsmcHandler):
         except (ValueError, KeyError):
             raise ArchiveException(reason=invalid_body_msg, status_code=400)
 
-        try:
-            # This is a rather convoluted solution to booleans potentially
-            # arriving either in JSON format (true) or stringified Python format ("True")
-            remove = eval(("" + request_data["remove"]).capitalize())
-        except (ValueError, KeyError):
-            raise ArchiveException(reason=missing_rm_msg, status_code=400)
-
-        if not isinstance(remove, bool):
+        remove = False
+        if "remove" in request_data:
+            remove = request_data["remove"]
+            # Booleans may arrive in either in JSON format (true)
+            # or stringified Python format ("True") (e.g. from the Irma archiving workflow)
+            try:
+                if not isinstance(remove, bool):
+                    remove = eval(request_data["remove"])
+            except (NameError):
+                raise ArchiveException(reason=missing_rm_msg, status_code=400)
+        else:
             raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
         if "exclude_dirs" in request_data:

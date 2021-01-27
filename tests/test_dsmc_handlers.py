@@ -131,11 +131,12 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         import time
         time.sleep(1)
 
+        # Ensure nothing is excluded
         self.assertEqual(json_resp["state"], State.DONE)
         self.assertTrue(os.path.exists(archive_path))
-        # directory1 and *.bar are excluded in the config file
-        self.assertFalse(os.path.exists(os.path.join(archive_path, "directory1")))
-        self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2", "file.bar")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory1")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory3")))
+        self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bar")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 
         # Exclude parameters in POST request
@@ -143,11 +144,10 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
         json_resp = json.loads(response.body)
 
+        # Ensure that only extensions and dirs in the POST request are excluded
         self.assertEqual(json_resp["state"], State.DONE)
-        # Ensure that extensions and dirs in config file are no longer excluded
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory1")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bar")))
-        # Ensure that extensions and dirs in the POST request are excluded
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory3")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 

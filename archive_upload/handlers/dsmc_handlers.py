@@ -653,10 +653,8 @@ class CreateDirHandler(BaseDsmcHandler):
         path_to_archive_root = self.config["path_to_archive_root"]
         path_to_archive = os.path.abspath(
             os.path.join(path_to_archive_root, runfolder) + "_archive")
-
-        # Default values come from config file but can be overridden in the POST request.
-        exclude_dirs = self.config["exclude_dirs"]
-        exclude_extensions = self.config["exclude_extensions"]
+        exclude_dirs = []
+        exclude_extensions = []
 
         # Messages
         invalid_body_msg = "Invalid body format."
@@ -672,8 +670,10 @@ class CreateDirHandler(BaseDsmcHandler):
         remove = False
         if "remove" in request_data:
             remove = request_data["remove"]
-            # Booleans may arrive in either in JSON format (true)
-            # or stringified Python format ("True") (e.g. from the Irma archiving workflow)
+            # Booleans may arrive in either in:
+            # 1) JSON format (true), or
+            # 2) stringified Python format ("True") (e.g. from the Irma archiving workflow)
+            # TODO: Remove support for format 2, see DEVELOP-1024 // ML, 2021-01
             try:
                 if not isinstance(remove, bool):
                     remove = eval(request_data["remove"])

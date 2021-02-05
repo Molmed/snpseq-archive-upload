@@ -158,6 +158,13 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
 
         self.assertEqual(json_resp["state"], State.ERROR)
 
+        # Should fail due to folder already existing (default is remove: false)
+        body = {}
+        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
+        json_resp = json.loads(response.body)
+
+        self.assertEqual(json_resp["state"], State.ERROR)
+
         # Check that the dir is recreated
         os.mkdir(os.path.join(archive_path, "remove-me"))
 
@@ -173,7 +180,7 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         shutil.rmtree(archive_path)
 
     def test_create_dir_on_biotank(self):
-        body = {"remove": "False"}
+        body = {}
         header = {"Host": "biotank42"}
         root = self.dummy_config["monitored_directory"]
         runfolder = "testrunfolder"
@@ -194,8 +201,8 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         json_resp = json.loads(resp.body)
         self.assertEqual(json_resp["state"], State.ERROR)
 
-    def test_create_dir_missing_remove(self):
-        body = {"foo": "bar"}
+    def test_create_dir_invalid_remove(self):
+        body = {"remove": "foobar"}
         resp = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
         self.assertEqual(resp.code, 400)
         json_resp = json.loads(resp.body)

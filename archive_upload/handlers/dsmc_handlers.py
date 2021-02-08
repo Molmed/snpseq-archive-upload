@@ -658,7 +658,7 @@ class CreateDirHandler(BaseDsmcHandler):
 
         # Messages
         invalid_body_msg = "Invalid body format."
-        missing_rm_msg = "Need to provide a boolean for the `remove` field in the HTTP body."
+        missing_rm_msg = "The `remove` field must be a boolean."
         exclude_dirs_msg = "The `exclude_dirs` field must be a comma-separated string."
         exclude_extensions_msg = "The `exclude_extensions` field must be a comma-separated string."
 
@@ -679,8 +679,6 @@ class CreateDirHandler(BaseDsmcHandler):
                     remove = eval(request_data["remove"])
             except (NameError):
                 raise ArchiveException(reason=missing_rm_msg, status_code=400)
-        else:
-            raise ArchiveException(reason=missing_rm_msg, status_code=400)
 
         if "exclude_dirs" in request_data:
             exclude_dirs = request_data["exclude_dirs"]

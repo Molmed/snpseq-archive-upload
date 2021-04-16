@@ -56,24 +56,24 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         not_valid = UploadHandler._validate_runfolder_exists("non-existant", self.dummy_config["monitored_directory"])
         self.assertFalse(not_valid)
 
-    def test__verify_unaligned(self):
+    def test__verify_required_dir(self):
         root = "tests/resources/unaligned_dir"
-        exists = CreateDirHandler._verify_unaligned(root + "/link")
+        exists = CreateDirHandler._verify_required_dir(root + "/link", "Unaligned")
         self.assertTrue(exists)
 
-    def test__verify_unaligned_missing_link(self):
+    def test__verify_required_dir_missing_link(self):
         root = "tests/resources/unaligned_dir"
-        exists = CreateDirHandler._verify_unaligned(root + "/no_link")
+        exists = CreateDirHandler._verify_required_dir(root + "/no_link", "Unaligned")
         self.assertFalse(exists)
 
-    def test__verify_unaligned_error_link(self):
+    def test__verify_required_dir_error_link(self):
         root = "tests/resources/unaligned_dir"
-        exists = CreateDirHandler._verify_unaligned(root + "/error_link")
+        exists = CreateDirHandler._verify_required_dir(root + "/error_link", "Unaligned")
         self.assertFalse(exists)
 
-    def test__verify_unaligned_file_instead_of_link(self):
+    def test__verify_required_dir_file_instead_of_link(self):
         root = "tests/resources/unaligned_dir"
-        exists = CreateDirHandler._verify_unaligned(root + "/error_file")
+        exists = CreateDirHandler._verify_required_dir(root + "/error_file", "Unaligned")
         self.assertFalse(exists)
 
     @mock.patch("archive_upload.lib.jobrunner.LocalQAdapter.start", autospec=True)
@@ -179,18 +179,17 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
 
         shutil.rmtree(archive_path)
 
-    def test_create_dir_on_biotank(self):
-        body = {}
-        header = {"Host": "biotank42"}
+    def test_create_dir_with_required_dirs(self):
+        body = {"required_dirs": "Unaligned"}
         root = self.dummy_config["monitored_directory"]
         runfolder = "testrunfolder"
         path_to_runfolder = os.path.abspath(os.path.join(root, runfolder))
 
-        with mock.patch("archive_upload.handlers.dsmc_handlers.CreateDirHandler._verify_unaligned") as mock__unaligned:
+        with mock.patch("archive_upload.handlers.dsmc_handlers.CreateDirHandler._verify_required_dir") as mock__unaligned:
             mock__unaligned.return_value = False
-            response = self.fetch(self.API_BASE + "/create_dir/" + runfolder, method="POST", body=json_encode(body), headers=header)
+            response = self.fetch(self.API_BASE + "/create_dir/" + runfolder, method="POST", body=json_encode(body))
 
-        mock__unaligned.assert_called_with(path_to_runfolder)
+        mock__unaligned.assert_called_with(path_to_runfolder, "Unaligned")
         self.assertEqual(response.code, 500)
         json_resp = json.loads(response.body)
         self.assertEqual(json_resp["state"], State.ERROR)

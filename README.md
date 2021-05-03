@@ -22,7 +22,7 @@ Trying it out
 
 And then you can find a simple api documentation with:
 
-    curl http://localhost:8181/api
+    curl http://localhost:8333/api
 
 To run the tests:
 

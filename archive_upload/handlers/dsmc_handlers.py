@@ -545,26 +545,21 @@ class CreateDirHandler(BaseDsmcHandler):
     """
 
     @staticmethod
-    def _verify_unaligned(srcdir):
+    def _verify_required_dir(srcdir, required_path):
         """
-        Check that the archive contains the `Unaligned` symlink when running on biotanks.
-        The link should point to a proper directory.
+        Check that the required path exists as a directory or symlink to a proper directory.
 
         :param srcdir: The path to the archive which we should investigate
-        :return: True if `srcdir` contains a symlink `Unaligned` that points to a directory,
+        :param required_path: The path of the directory that is required
+        :return: True if `srcdir` contains the required paths,
                  False otherwise
         """
-        log.debug("Validating Unaligned...")
+        log.debug("Validating presence of {}...".format(required_path))
 
-        unaligned_link = os.path.join(srcdir, "Unaligned")
-        unaligned_dir = os.path.abspath(unaligned_link)
-
-        if not os.path.exists(unaligned_link) or not os.path.islink(unaligned_link):
-            log.info(
-                "Expected link {} doesn't seem to exist or is broken. Aborting.".format(unaligned_link))
-            return False
-        elif not os.path.exists(unaligned_dir) or not os.path.isdir(unaligned_dir):
-            log.info("Expected directory {} doesn't seem to exist. Aborting.".format(unaligned_dir))
+        path = os.path.join(srcdir, required_path)
+        dir = os.path.realpath(path)
+        if not os.path.exists(dir) or not os.path.isdir(dir):
+            log.info("Expected directory {} doesn't exist. Aborting.".format(dir))
             return False
 
         return True
@@ -643,6 +638,7 @@ class CreateDirHandler(BaseDsmcHandler):
 
         :param runfolder: name of the runfolder we want to create an archive dir of
         :param remove: boolean to indicate if we should remove previous archive
+        :param required_dirs: comma-separated list of directory names that are required for archival
         :param exclude_dirs: comma-separated list of directory names to exclude from the archive
         :param exclude_extensions: comma-separated list of extensions to exclude from the archive (include the dot)
         :return: HTTP 200 if runfolder archive was created successfully,
@@ -653,55 +649,50 @@ class CreateDirHandler(BaseDsmcHandler):
         path_to_archive_root = self.config["path_to_archive_root"]
         path_to_archive = os.path.abspath(
             os.path.join(path_to_archive_root, runfolder) + "_archive")
-        exclude_dirs = []
-        exclude_extensions = []
 
         # Messages
         invalid_body_msg = "Invalid body format."
         missing_rm_msg = "The `remove` field must be a boolean."
-        exclude_dirs_msg = "The `exclude_dirs` field must be a comma-separated string."
-        exclude_extensions_msg = "The `exclude_extensions` field must be a comma-separated string."
 
         try:
             request_data = json.loads(self.request.body)
         except (ValueError, KeyError):
             raise ArchiveException(reason=invalid_body_msg, status_code=400)
 
-        remove = False
-        if "remove" in request_data:
-            remove = request_data["remove"]
-            # Booleans may arrive in either in:
-            # 1) JSON format (true), or
-            # 2) stringified Python format ("True") (e.g. from the Irma archiving workflow)
-            # TODO: Remove support for format 2, see DEVELOP-1024 // ML, 2021-01
-            try:
-                if not isinstance(remove, bool):
-                    remove = eval(request_data["remove"])
-            except (NameError):
-                raise ArchiveException(reason=missing_rm_msg, status_code=400)
+        # Booleans may arrive in either in:
+        # 1) JSON format (true), or
+        # 2) stringified Python format ("True") (e.g. from the Irma archiving workflow)
+        # TODO: Remove support for format 2, see DEVELOP-1024 // ML, 2021-01
+        remove = request_data.get("remove", False)
+        if remove:
+            if isinstance(remove, basestring):
+                if not (remove == "True" or remove == "False"):
+                    raise ArchiveException(reason=missing_rm_msg, status_code=400)
+                remove = remove == "True"
 
-        if "exclude_dirs" in request_data:
-            exclude_dirs = request_data["exclude_dirs"]
-            if not isinstance(exclude_dirs, basestring):
-                raise ArchiveException(reason=exclude_dirs_msg, status_code=400)
-            exclude_dirs = [dir.strip() for dir in exclude_dirs.split(',')]
+        def _process_comma_separated_param(param_name):
+            val = request_data.get(param_name, [])
+            if val:
+                if not isinstance(val, basestring):
+                    error_msg = "The `{}` field must be a comma-separated string.".format(param_name)
+                    raise ArchiveException(reason=error_msg, status_code=400)
+                val = [d.strip() for d in val.split(',')]
+            return val
 
-        if "exclude_extensions" in request_data:
-            exclude_extensions = request_data["exclude_extensions"]
-            if not isinstance(exclude_extensions, basestring):
-                raise ArchiveException(reason=exclude_extensions_msg, status_code=400)
-            exclude_extensions = [ext.strip() for ext in exclude_extensions.split(',')]
+        required_dirs = _process_comma_separated_param("required_dirs")
+        exclude_dirs = _process_comma_separated_param("exclude_dirs")
+        exclude_extensions = _process_comma_separated_param("exclude_extensions")
 
         if not self._validate_runfolder_exists(runfolder, monitored_dir):
             msg = "Error encountered when validating runfolder. {} is not under {}".format(
                 runfolder, monitored_dir)
             raise ArchiveException(reason=msg, status_code=400)
 
-        my_host = self.request.headers.get('Host')
-
-        if "biotank" in my_host and not self._verify_unaligned(path_to_runfolder):
-            msg = "Error when validating Unaligned. Unaligned symlink {} broken or missing.".format(path_to_runfolder, "Unaligned")
-            raise ArchiveException(reason=msg, status_code=500)
+        for d in required_dirs:
+            if not self._verify_required_dir(path_to_runfolder, d):
+                msg = "Error when validating required directories. " \
+                      "Directory '{}' in {} broken or missing.".format(d, path_to_runfolder)
+                raise ArchiveException(reason=msg, status_code=500)
 
         if not self._verify_dest(path_to_archive, remove):
             msg = "Error when validating destination path {} (remove={})".format(

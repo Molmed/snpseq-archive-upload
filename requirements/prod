@@ -4,4 +4,4 @@ git+https://github.com/dakl/localq.git@v0.3.7
 # Localq depence on networkx
 networkx==1.11
 arteria==1.1.3
-
+mock==1.0.1

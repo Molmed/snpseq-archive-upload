@@ -18,6 +18,7 @@ from archive_upload.lib.jobrunner import LocalQAdapter
 from archive_upload.lib.utils import FileUtils
 
 from tornado import web
+from mock import Mock
 
 log = logging.getLogger(__name__)
 
@@ -468,6 +469,12 @@ class UploadHandler(BaseDsmcHandler):
         log.info("Uploading {} to PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc archive {}/ -subdir=yes -description={}".format(
             dsmc_log_dir, path_to_archive, uniq_id)
+
+        # Mock starting the TSM process if mock mode is enabled
+        tsm_mock_enabled = self.config.__getitem__("tsm_mock_enabled")
+        if tsm_mock_enabled:
+            self.runner_service.start = Mock(return_value=self.config["tsm_mock_job_id"])
+
         job_id = self.runner_service.start(
             cmd, nbr_of_cores=1, run_dir=dsmc_log_dir, stdout=output_file, stderr=output_file)
 
@@ -485,6 +492,9 @@ class UploadHandler(BaseDsmcHandler):
             "archive_path": path_to_archive,
             "archive_description": uniq_id,
             "archive_host": socket.gethostname() }
+
+        if tsm_mock_enabled:
+            response_data["tsm_mock_enabled"] = tsm_mock_enabled
 
         self.set_status(202, reason="started processing")
         self.write_object(response_data)
@@ -812,6 +822,8 @@ class StatusHandler(BaseDsmcHandler):
         """
 
         if job_id:
+            if self.config.__getitem__("tsm_mock_enabled"):
+                self.runner_service.status = Mock(return_value=self.config["tsm_mock_status"])
             status = {"state": self.runner_service.status(job_id)}
         else:
             # TODO: Update the correct status for all jobs; the filtering in jobrunner

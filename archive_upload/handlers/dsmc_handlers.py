@@ -488,6 +488,10 @@ class UploadHandler(BaseDsmcHandler):
             self.request.host,
             self.reverse_url("status", job_id))
 
+        message = ""
+        if tsm_mock_enabled:
+            message = "tsm_mock_enabled"
+
         response_data = {
             "job_id": job_id,
             "service_version": version,
@@ -496,10 +500,10 @@ class UploadHandler(BaseDsmcHandler):
             "dsmc_log_dir": dsmc_log_dir,
             "archive_path": path_to_archive,
             "archive_description": uniq_id,
-            "archive_host": socket.gethostname() }
+            "archive_host": socket.gethostname(),
+            "message": message }
 
-        if tsm_mock_enabled:
-            response_data["tsm_mock_enabled"] = tsm_mock_enabled
+
 
         self.set_status(202, reason="started processing")
         self.write_object(response_data)

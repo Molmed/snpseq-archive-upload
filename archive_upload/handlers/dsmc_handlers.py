@@ -18,6 +18,7 @@ from archive_upload.lib.jobrunner import LocalQAdapter
 from archive_upload.lib.utils import FileUtils
 
 from tornado import web
+from mock import Mock
 
 log = logging.getLogger(__name__)
 
@@ -468,6 +469,17 @@ class UploadHandler(BaseDsmcHandler):
         log.info("Uploading {} to PDC...".format(path_to_archive))
         cmd = "export DSM_LOG={} && dsmc archive {}/ -subdir=yes -description={}".format(
             dsmc_log_dir, path_to_archive, uniq_id)
+
+        # Mock starting the TSM process if mock mode is enabled
+        try:
+            tsm_mock_enabled = self.config["tsm_mock_enabled"]
+        except KeyError:
+            tsm_mock_enabled = False
+        if tsm_mock_enabled:
+            self.runner_service.start = Mock(return_value=self.config["tsm_mock_job_id"])
+            log.warning("Running TSM client on mock mode for archive: {}, job: {}".format(
+                runfolder_archive, self.config["tsm_mock_job_id"]))
+
         job_id = self.runner_service.start(
             cmd, nbr_of_cores=1, run_dir=dsmc_log_dir, stdout=output_file, stderr=output_file)
 
@@ -475,6 +487,10 @@ class UploadHandler(BaseDsmcHandler):
             self.request.protocol,
             self.request.host,
             self.reverse_url("status", job_id))
+
+        message = ""
+        if tsm_mock_enabled:
+            message = "tsm_mock_enabled"
 
         response_data = {
             "job_id": job_id,
@@ -484,7 +500,10 @@ class UploadHandler(BaseDsmcHandler):
             "dsmc_log_dir": dsmc_log_dir,
             "archive_path": path_to_archive,
             "archive_description": uniq_id,
-            "archive_host": socket.gethostname() }
+            "archive_host": socket.gethostname(),
+            "message": message }
+
+
 
         self.set_status(202, reason="started processing")
         self.write_object(response_data)
@@ -812,6 +831,12 @@ class StatusHandler(BaseDsmcHandler):
         """
 
         if job_id:
+            try:
+                tsm_mock_enabled = self.config["tsm_mock_enabled"]
+            except KeyError:
+                tsm_mock_enabled = False
+            if tsm_mock_enabled:
+                self.runner_service.status = Mock(return_value=self.config["tsm_mock_status"])
             status = {"state": self.runner_service.status(job_id)}
         else:
             # TODO: Update the correct status for all jobs; the filtering in jobrunner

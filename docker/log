@@ -1,0 +1,9 @@
+#! /bin/bash
+
+set -o errexit
+
+# get the container hash from file or error out if it doesn't exist
+ID="$(cat docker/id.txt)"
+
+docker logs \
+    -f "${ID}"

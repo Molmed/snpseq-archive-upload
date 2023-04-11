@@ -39,31 +39,34 @@ To run the app in production mode:
 Docker container
 ----------------
 
-For testing purposes, you can also build a [Docker](https://docker.com) container using the `Dockerfile` and configs in
-the `docker/` folder:
+For testing purposes, you can also build a [Docker](https://docker.com) container using the resources in the `docker/`
+folder:
 
-    # build Docker container
-    docker build -t archive-upload:latest -f docker/Dockerfile .
+    # build and start Docker container
+    docker/up
 
-This will build a Docker container that runs a [nginx](https://nginx.com) proxy server which will listen to connections
-on ports `8181` and `8182` and forward traffic to the `archive-upload` service running internally. API calls to port 
-`8181` are done as described in the api documentation mentioned above. API calls to port `8182` emulate how calls to the
-service running on Uppmax is done (i.e., going through a gateway). The first path element for these calls should be 
-`upload/` (see example below).
-
-    # start Docker container
-    docker run -d -p 127.0.0.1:8181:8181 -p 127.0.0.1:8182:8182 archive-upload:latest
+This will build and start a Docker container that runs a [nginx](https://nginx.com) proxy server which will listen to
+connections on ports `8181` and `8182` and forward traffic to the `archive-upload` service running internally. API
+calls to port `8181` are done as described in the api documentation mentioned above, e.g.:
 
     # interact with archive-upload service on port 8181
     curl 127.0.0.1:8181/api/1.0/version
         # {"version": "1.0.4"}
 
+API calls to port `8182` emulate how calls to the service running on Uppmax is done (i.e., going through a gateway).
+The first path element for these calls should be `upload/`, e.g.:
+
     # interact with archive-upload service on port 8182
     curl 127.0.0.1:8182/upload/api/1.0/version
         # {"version": "1.0.4"}
 
+The container log output can be followed:
+
+    # follow the container log output (Ctrl+C to stop)
+    docker/log
+
 In addition, the `archive-upload` service in the container is running with the TSM mocking enabled. In the container, 
-there are two folders that can be used for testing, `test_1_upload` and `test_2_upload`.
+there are two folders that can be used for testing, `test_1_upload` and `test_2_upload`, e.g.:
 
     # create archive dir
     curl -X POST -d '{}' 127.0.0.1:8181/api/1.0/create_dir/test_1_upload
@@ -103,3 +106,8 @@ there are two folders that can be used for testing, `test_1_upload` and `test_2_
     # check status
     curl 127.0.0.1:8181/api/1.0/status/999
         # {"state": "done"}
+
+The docker container can be stopped and removed:
+
+    # stop and remove the running docker container
+    docker/down

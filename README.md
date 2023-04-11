@@ -66,16 +66,40 @@ In addition, the `archive-upload` service in the container is running with the T
 there are two folders that can be used for testing, `test_1_upload` and `test_2_upload`.
 
     # create archive dir
-    curl -X POST 127.0.0.1:8181/api/1.0/create_dir/test_1_upload
+    curl -X POST -d '{}' 127.0.0.1:8181/api/1.0/create_dir/test_1_upload
+        # {"state": "done", "service_version": "1.0.4"}
 
     # compress achive dir
     curl -X POST 127.0.0.1:8181/api/1.0/compress_archive/test_1_upload_archive
+        # {"state": "done", "service_version": "1.0.4"}
 
     # generate checksums
     curl -X POST 127.0.0.1:8181/api/1.0/gen_checksums/test_1_upload_archive
+        # {
+        #   "state": "started",
+        #   "link": "http://127.0.0.1:8181/api/1.0/status/1",
+        #   "job_id": 1,
+        #   "service_version": "1.0.4"
+        # }
+
+    # check status
+    curl http://127.0.0.1:8181/api/1.0/status/1
+        # {"state": "done"}
 
     # upload archive dir
     curl -X POST 127.0.0.1:8181/api/1.0/upload/test_1_upload_archive
+        # {
+        #   "dsmc_log_dir": "/tmp/archive-upload//dsmc_test_1_upload_archive",
+        #   "archive_path": "/data/mm-xart002/runfolders/test_1_upload_archive",
+        #   "state": "started",
+        #   "archive_host": "b2dbb6de3079",
+        #   "link": "http://127.0.0.1:8181/api/1.0/status/999",
+        #   "job_id": 999,
+        #   "service_version": "1.0.4",
+        #   "message": "tsm_mock_enabled",
+        #   "archive_description": "61a1551e-0ef6-41f1-911d-2998c5c478dd"
+        # }
 
     # check status
     curl 127.0.0.1:8181/api/1.0/status/999
+        # {"state": "done"}

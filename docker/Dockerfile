@@ -29,4 +29,6 @@ RUN \
   dd if=/dev/urandom of=test_2_upload/test_2_data_f count=4000 bs=1024 && \
   cd /archive-upload
 
+EXPOSE 8181 8182
+
 CMD [ "docker/start.sh" ]

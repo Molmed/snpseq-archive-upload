@@ -8,6 +8,7 @@ RUN \
   apt-get install -y git nano nginx && \
   cp docker/nginx.conf /etc/nginx/nginx.conf && \
   pip install virtualenv && \
+  rm -rf .venv && \
   virtualenv .venv && \
   .venv/bin/pip install --upgrade pip && \
   .venv/bin/pip install -U -e . -r requirements/dev . && \

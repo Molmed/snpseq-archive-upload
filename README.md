@@ -36,3 +36,78 @@ To run the app in production mode:
     # start the server
     archive-upload-ws --config=config/ --port=8181 --debug
     
+Docker container
+----------------
+
+For testing purposes, you can also build a [Docker](https://docker.com) container using the resources in the `docker/`
+folder:
+
+    # build and start Docker container
+    docker/up
+
+This will build and start a Docker container that runs a [nginx](https://nginx.com) proxy server which will listen to
+connections on ports `8181` and `8182` and forward traffic to the `archive-upload` service running internally. API
+calls to port `8181` are done as described in the api documentation mentioned above, e.g.:
+
+    # interact with archive-upload service on port 8181
+    curl 127.0.0.1:8181/api/1.0/version
+        # {"version": "1.0.4"}
+
+API calls to port `8182` emulate how calls to the service running on Uppmax is done (i.e., going through a gateway).
+The first path element for these calls should be `upload/`, e.g.:
+
+    # interact with archive-upload service on port 8182
+    curl 127.0.0.1:8182/upload/api/1.0/version
+        # {"version": "1.0.4"}
+
+The container log output can be followed:
+
+    # follow the container log output (Ctrl+C to stop)
+    docker/log
+
+In addition, the `archive-upload` service in the container is running with the TSM mocking enabled. In the container, 
+there are two folders that can be used for testing, `test_1_upload` and `test_2_upload`, e.g.:
+
+    # create archive dir
+    curl -X POST -d '{}' 127.0.0.1:8181/api/1.0/create_dir/test_1_upload
+        # {"state": "done", "service_version": "1.0.4"}
+
+    # compress achive dir
+    curl -X POST 127.0.0.1:8181/api/1.0/compress_archive/test_1_upload_archive
+        # {"state": "done", "service_version": "1.0.4"}
+
+    # generate checksums
+    curl -X POST 127.0.0.1:8181/api/1.0/gen_checksums/test_1_upload_archive
+        # {
+        #   "state": "started",
+        #   "link": "http://127.0.0.1:8181/api/1.0/status/1",
+        #   "job_id": 1,
+        #   "service_version": "1.0.4"
+        # }
+
+    # check status
+    curl http://127.0.0.1:8181/api/1.0/status/1
+        # {"state": "done"}
+
+    # upload archive dir
+    curl -X POST 127.0.0.1:8181/api/1.0/upload/test_1_upload_archive
+        # {
+        #   "dsmc_log_dir": "/tmp/archive-upload//dsmc_test_1_upload_archive",
+        #   "archive_path": "/data/mm-xart002/runfolders/test_1_upload_archive",
+        #   "state": "started",
+        #   "archive_host": "b2dbb6de3079",
+        #   "link": "http://127.0.0.1:8181/api/1.0/status/999",
+        #   "job_id": 999,
+        #   "service_version": "1.0.4",
+        #   "message": "tsm_mock_enabled",
+        #   "archive_description": "61a1551e-0ef6-41f1-911d-2998c5c478dd"
+        # }
+
+    # check status
+    curl 127.0.0.1:8181/api/1.0/status/999
+        # {"state": "done"}
+
+The docker container can be stopped and removed:
+
+    # stop and remove the running docker container
+    docker/down

@@ -271,7 +271,11 @@ cat tests/resources/dsmc_output/dsmc_descr.txt
 
         with self.scripts:
             archive_path = "/data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive"
-            descr = helper.get_pdc_descr(archive_path, dsmc_log_dir="")
+            descr = helper.get_pdc_descr(
+                archive_path,
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
         self.assertEqual(descr, "e374bd6b-ab36-4f41-94d3-f4eaea9f30d4")
 
@@ -285,7 +289,11 @@ cat tests/resources/dsmc_output/dsmc_descr.txt
 
         with self.scripts:
             archive_path = "/foo"
-            descr = helper.get_pdc_descr(archive_path, dsmc_log_dir="")
+            descr = helper.get_pdc_descr(
+                archive_path,
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
     @raises(ArchiveException)
     def test_get_pdc_descr_no_results(self):
@@ -298,7 +306,11 @@ echo apa
 
         with self.scripts:
             archive_path = "foobar"
-            descr = helper.get_pdc_descr(archive_path, dsmc_log_dir="")
+            descr = helper.get_pdc_descr(
+                archive_path,
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
     def test_get_pdc_filelist(self):
         self.scripts = mockprocess.MockProc()
@@ -311,7 +323,12 @@ cat tests/resources/dsmc_output/dsmc_pdc_filelist.txt
 
         with self.scripts:
             archive_path = "/data/mm-xart002/runfolders/johanhe_test_0809_001-AG2UJ_archive"
-            filelist = helper.get_pdc_filelist(archive_path, "e374bd6b-ab36-4f41-94d3-f4eaea9f30d4", dsmc_log_dir="")
+            filelist = helper.get_pdc_filelist(
+                archive_path,
+                "e374bd6b-ab36-4f41-94d3-f4eaea9f30d4",
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
         with open("tests/resources/dsmc_output/dsmc_pdc_converted_filelist.txt") as f:
             nr_of_files = 0
@@ -331,7 +348,12 @@ cat tests/resources/dsmc_output/dsmc_pdc_filelist.txt
 
         with self.scripts:
             archive_path = "foo"
-            filelist = helper.get_pdc_filelist(archive_path, "foo-bar", dsmc_log_dir="")
+            filelist = helper.get_pdc_filelist(
+                archive_path,
+                "foo-bar",
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
     @raises(ArchiveException)
     def test_get_pdc_filelist_no_result(self):
@@ -343,7 +365,12 @@ echo uggla
 """)
         with self.scripts:
             archive_path = "foo"
-            filelist = helper.get_pdc_filelist(archive_path, "foo-bar", dsmc_log_dir="")
+            filelist = helper.get_pdc_filelist(
+                archive_path,
+                "foo-bar",
+                dsmc_log_dir="",
+                dsmc_extra_args={}
+            )
 
     def test_get_local_filelist(self):
         helper = ReuploadHelper()
@@ -427,7 +454,7 @@ echo uggla
                 ("archive_upload.handlers.dsmc_handlers.ReuploadHelper._tmp_file",\
                 autospec=True) as mock__tmp_file:
             mock__tmp_file.side_effect = my_tmp_file
-            res_id = helper.reupload(reupload_files, descr, dsmc_log_dir, runsrv)
+            res_id = helper.reupload(reupload_files, descr, dsmc_log_dir, {}, runsrv)
 
         self.assertEqual(res_id, exp_id)
         self.assertEqual(runsrv.components[-1], descr)

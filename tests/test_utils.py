@@ -10,7 +10,7 @@ class TestUtils:
         "tsm_mock_enabled": False
     }
 
-class DummyConfig:
-    def __getitem__(self, key):
-        return TestUtils.DUMMY_CONFIG[key]
+class DummyConfig(dict):
 
+    def __init__(self):
+        super(DummyConfig, self).__init__(TestUtils.DUMMY_CONFIG)

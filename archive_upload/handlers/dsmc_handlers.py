@@ -369,8 +369,8 @@ class ReuploadHelper(object):
 
         :return: a string with arguments that should be appended to the dsmc command line
         """
-        args = [f"-{k}='{v}'" for k, v in key_values.items() if v is not None]
-        args.extend([f"-{k}" for k, v in key_values.items() if v is None])
+        args = ["-{}='{}'".format(k, v) for k, v in key_values.items() if v is not None]
+        args.extend(["-{}".format(k) for k, v in key_values.items() if v is None])
         return " ".join(args)
 
 
@@ -491,6 +491,7 @@ class UploadHandler(BaseDsmcHandler):
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
+        dsmc_extra_args = self.config.get("dsmc_extra_args", "")
         uniq_id = str(uuid.uuid4())
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):

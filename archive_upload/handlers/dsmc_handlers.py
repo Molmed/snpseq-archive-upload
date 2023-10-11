@@ -136,15 +136,18 @@ class ReuploadHelper(object):
     Helper class for the ReuploadHandler. Methods put here mainly to faciliate easier testing.
     """
 
-    def get_pdc_descr(self, path_to_archive, dsmc_log_dir):
+    def get_pdc_descr(self, path_to_archive, dsmc_log_dir, dsmc_extra_args):
         """
         Fetches the archive `description` label from PDC.
 
         :param path_to_archive: The path to the archive uploaded that we want to get the description for
         :return: A dsmc description if successful, raises ArchiveException otherwise
         """
+
+        args = self.dsmc_args(dsmc_extra_args)
+
         log.info("Fetching description for latest upload of {} to PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc q ar {}".format(dsmc_log_dir, path_to_archive)
+        cmd = "export DSM_LOG={} && dsmc q ar {} {}".format(dsmc_log_dir, path_to_archive, args)
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         dsmc_out, _ = p.communicate()
@@ -207,7 +210,7 @@ class ReuploadHelper(object):
 
         return (filename, byte_size)
 
-    def get_pdc_filelist(self, path_to_archive, descr, dsmc_log_dir):
+    def get_pdc_filelist(self, path_to_archive, descr, dsmc_log_dir, dsmc_extra_args):
         """
         Gets the files and their sizes from PDC for a certain path (archive), with a specific description.
 
@@ -215,9 +218,15 @@ class ReuploadHelper(object):
         :param descr: The description label for the uploaded archive
         :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes. Raises ArchiveException if there was an error.
         """
+        key_values = {
+            "subdir": "yes",
+            "description": descr
+        }
+        key_values.update(dsmc_extra_args)
+        args = self.dsmc_args(key_values)
         log.info("Fetching remote filelist for {} from PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc q ar {}/ -subdir=yes -description={}".format(
-            dsmc_log_dir, path_to_archive, descr)
+        cmd = "export DSM_LOG={} && dsmc q ar {}/ {}".format(
+            dsmc_log_dir, path_to_archive, args)
 
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -309,7 +318,7 @@ class ReuploadHelper(object):
 
         return reupload_files
 
-    def reupload(self, reupload_files, descr, dsmc_log_dir, runner_service):
+    def reupload(self, reupload_files, descr, dsmc_log_dir, dsmc_extra_args, runner_service):
         """
         Tells `dsmc` to upload all files in the given filelist.
 
@@ -332,8 +341,15 @@ class ReuploadHelper(object):
 
         output_file = BaseDsmcHandler._rename_log_file(dsmc_log_dir)
 
-        cmd = "export DSM_LOG={} && dsmc archive -filelist={} -description={}".format(
-            dsmc_log_dir, reupload_file, descr)
+        key_values = {
+            "filelist": reupload_file,
+            "description": descr
+        }
+        key_values.update(dsmc_extra_args)
+        args = self.dsmc_args(key_values)
+
+        cmd = "export DSM_LOG={} && dsmc archive {}".format(
+            dsmc_log_dir, args)
         log.debug("Running command {}".format(cmd))
         job_id = runner_service.start(
             cmd, nbr_of_cores=1, run_dir=dsmc_log_dir, stdout=output_file, stderr=output_file)
@@ -343,6 +359,19 @@ class ReuploadHelper(object):
     def _tmp_file(self, component):
         uniq_id = str(uuid.uuid4())
         return os.path.join("/tmp", "{}-{}".format(component, uniq_id))
+
+
+    @staticmethod
+    def dsmc_args(key_values):
+        """
+        Convert a dict of arguments, represented as key-value pairs as a string to be included on
+        the dsmc command line
+
+        :return: a string with arguments that should be appended to the dsmc command line
+        """
+        args = [f"-{k}='{v}'" for k, v in key_values.items() if v is not None]
+        args.extend([f"-{k}" for k, v in key_values.items() if v is None])
+        return " ".join(args)
 
 
 class ReuploadHandler(BaseDsmcHandler):
@@ -373,6 +402,7 @@ class ReuploadHandler(BaseDsmcHandler):
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
+        dsmc_extra_args = self.config.get("dsmc_extra_args", "")
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
@@ -384,19 +414,28 @@ class ReuploadHandler(BaseDsmcHandler):
             os.makedirs(dsmc_log_dir)
 
         # Fetch the description of the last uploaded version of this archive
-        descr = helper.get_pdc_descr(path_to_archive, dsmc_log_dir)
+        descr = helper.get_pdc_descr(path_to_archive, dsmc_log_dir, dsmc_extra_args)
 
         # Get the local and remote filelist, and then get the list of files
         # that are missing on remote side, or differs in byte size.
         # NB. Uploaded list contains folders as well, but when we check local
         # content we only look at the files, and ignore the folders.
-        uploaded_files = helper.get_pdc_filelist(path_to_archive, descr, dsmc_log_dir)
+        uploaded_files = helper.get_pdc_filelist(
+            path_to_archive,
+            descr,
+            dsmc_log_dir,
+            dsmc_extra_args)
         local_files = helper.get_local_filelist(path_to_archive)
         reupload_files = helper.get_files_to_reupload(local_files, uploaded_files)
 
         # Upload the missing files with the same description previously used.
         if reupload_files:
-            job_id = helper.reupload(reupload_files, descr, dsmc_log_dir, self.runner_service)
+            job_id = helper.reupload(
+                reupload_files,
+                descr,
+                dsmc_log_dir,
+                dsmc_extra_args,
+                self.runner_service)
             log.debug("Reupload job_id {}".format(job_id))
 
             status_end_point = "{0}://{1}{2}".format(
@@ -463,12 +502,18 @@ class UploadHandler(BaseDsmcHandler):
         if not os.path.exists(dsmc_log_dir):
             os.makedirs(dsmc_log_dir)
 
-
         output_file = self._rename_log_file(dsmc_log_dir)
 
+        key_values = {
+            "subdir": "yes",
+            "description": uniq_id
+        }
+        key_values.update(dsmc_extra_args)
+        args = ReuploadHelper.dsmc_args(key_values)
+
         log.info("Uploading {} to PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc archive {}/ -subdir=yes -description={}".format(
-            dsmc_log_dir, path_to_archive, uniq_id)
+        cmd = "export DSM_LOG={} && dsmc archive {}/ {}".format(
+            dsmc_log_dir, path_to_archive, args)
 
         # Mock starting the TSM process if mock mode is enabled
         try:
@@ -646,7 +691,7 @@ class CreateDirHandler(BaseDsmcHandler):
                 else:
                     log.debug(
                         "Skipping to create an archive directory of {} because it is excluded".format(oldpath))
-        except OSError, msg:
+        except OSError as msg:
             errmsg = "Error when creating archive directory: {}".format(msg)
             log.debug(errmsg)
             raise ArchiveException(reason=errmsg, status_code=500)

@@ -1,10 +1,13 @@
 
 import json
 import mock
+import re
 import shutil
 import subprocess
 import tarfile
+import time
 import uuid
+import urlparse
 
 from nose.tools import *
 from mockproc import mockprocess
@@ -434,8 +437,14 @@ echo uggla
         exp_id = 72
 
         class MyRunner(object):
+
+            def __init__(self):
+                self.components = {}
+                self.cmd = ""
+
             def start(self, cmd, nbr_of_cores, run_dir, stdout=dsmc_log_file, stderr=dsmc_log_file):
-                self.components = cmd.split("=")
+                m = re.findall(r'\s\-([^=]+)=(\S+)', cmd)
+                self.components = {k: v.replace("'", "") for k, v in m}
                 self.cmd = cmd
                 return exp_id
 
@@ -457,7 +466,7 @@ echo uggla
             res_id = helper.reupload(reupload_files, descr, dsmc_log_dir, {}, runsrv)
 
         self.assertEqual(res_id, exp_id)
-        self.assertEqual(runsrv.components[-1], descr)
+        self.assertEqual(runsrv.components["description"], descr)
 
         with open(reupload_file) as f:
             uploaded = f.readlines()
@@ -480,7 +489,12 @@ echo uggla
 
 
         json_resp = json.loads(resp.body)
-        self.assertEqual(json_resp["state"], State.DONE)
+        self.assertEqual(json_resp["state"], State.PENDING)
+        link = urlparse.urlparse(json_resp["link"])[2]
+        while json_resp["state"] in [State.PENDING, State.STARTED]:
+            resp = self.fetch(link)
+            json_resp = json.loads(resp.body)
+            time.sleep(1)
 
         self.assertFalse(os.path.exists(os.path.join(archive_path, "RunInfo.xml")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "Config")))
@@ -501,7 +515,13 @@ echo uggla
                           allow_nonstandard_methods=True)
 
         json_resp = json.loads(resp.body)
-        self.assertEqual(json_resp["state"], State.DONE)
+        self.assertEqual(json_resp["state"], State.PENDING)
+
+        link = urlparse.urlparse(json_resp["link"])[2]
+        while json_resp["state"] in [State.PENDING, State.STARTED]:
+            resp = self.fetch(link)
+            json_resp = json.loads(resp.body)
+            time.sleep(1)
 
         self.assertTrue(os.path.exists(os.path.join(archive_path, "file.csv")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "file.bin")))
@@ -538,8 +558,15 @@ echo uggla
                 "{}.tar.gz".format(
                     os.path.basename(archive_path)))
 
-            self.assertEqual(State.DONE, json_resp["state"])
+            self.assertEqual(json_resp["state"], State.PENDING)
             self.assertEqual(archive_upload_version, json_resp["service_version"])
+
+            link = urlparse.urlparse(json_resp["link"])[2]
+            while json_resp["state"] in [State.PENDING, State.STARTED]:
+                resp = self.fetch(link)
+                json_resp = json.loads(resp.body)
+                time.sleep(1)
+
             self.assertTrue(os.path.exists(tarball_archive_path))
             self.assertListEqual([os.path.relpath(tarball_archive_path, archive_path)], os.listdir(archive_path))
 

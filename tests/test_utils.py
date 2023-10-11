@@ -14,3 +14,7 @@ class DummyConfig(dict):
 
     def __init__(self):
         super(DummyConfig, self).__init__(TestUtils.DUMMY_CONFIG)
+
+    @staticmethod
+    def get_app_config():
+        return TestUtils.DUMMY_CONFIG.copy()

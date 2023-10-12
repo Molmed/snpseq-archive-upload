@@ -654,48 +654,69 @@ class CreateDirHandler(BaseDsmcHandler):
             return True
 
     @staticmethod
-    def _create_archive(oldtree, newtree, exclude_dirs=[], exclude_extensions=[]):
-        """
-        Create a new runfolder archive named `<runfolder>_archive` by iterating through
-        the runfolder and symlinking each file. If the service has been configured to
-        exclude certain directories or file extensions then those directories and symlinks
-        will be ignored.
+    def _prune_subdirs_cmd(dirpath, subdirs, exclude_dirs):
+        exclude_dirs = exclude_dirs or []
+        cmd = []
+        for dir_to_prune in list(filter(
+                lambda d: d in exclude_dirs,
+                subdirs)):
+            cmd.append(
+                "rm -rf "
+                "{}".format(
+                    os.path.join(
+                        dirpath,
+                        dir_to_prune)))
+            # prune the tree to walk down
+            del subdirs[
+                subdirs.index(dir_to_prune)]
+        return " && ".join(cmd), subdirs
 
-        :param oldtree: Path to the runfolder
-        :param newtree: Path to the archive which we are going to create
-        :param exclude_dirs: List of directory names to exclude from the archive
-        :param exclude_extensions: List of file extensions to exclude from the archive
-        """
-        try:
-            content = os.listdir(oldtree)
+    @staticmethod
+    def _exclude_extension_cmd(dirpath, dirfiles, exclude_extensions):
+        exclude_extensions = exclude_extensions or []
+        cmd = []
+        for file_to_exclude in filter(
+                lambda f: os.path.splitext(f)[1] in exclude_extensions,
+                dirfiles):
+            cmd.append(
+                "rm -f "
+                "{}".format(
+                    os.path.join(
+                        dirpath,
+                        file_to_exclude)))
 
-            for entry in content:
-                oldpath = os.path.join(oldtree, entry)
-                newpath = os.path.join(newtree, entry)
+        return " && ".join(cmd)
 
-                if os.path.isdir(oldpath) and entry not in exclude_dirs:
-                    log.debug("Creating new dir {} because {} is not in exclude_dirs={}".format(
-                        newpath, entry, exclude_dirs))
-                    os.mkdir(newpath)
-                    CreateDirHandler._create_archive(
-                        oldpath, newpath, exclude_dirs, exclude_extensions)
-                elif os.path.isfile(oldpath):
-                    _, ext = os.path.splitext(oldpath)
+    @staticmethod
+    def _create_archive_cmd(oldtree, newtree, exclude_dirs=None, exclude_extensions=None):
+        oldtree = os.path.abspath(oldtree)
+        cmd = "cp " \
+              "-as " \
+              "{} " \
+              "{}".format(
+            oldtree,
+            newtree)
+        for dirpath, subdirs, dirfiles in os.walk(oldtree, topdown=True):
+            newpath = dirpath.replace(
+                oldtree,
+                os.path.abspath(newtree)
+            )
+            prune_cmd, subdirs = CreateDirHandler._prune_subdirs_cmd(
+                newpath,
+                subdirs,
+                exclude_dirs
+            )
+            exclude_files_cmd = CreateDirHandler._exclude_extension_cmd(
+                newpath,
+                dirfiles,
+                exclude_extensions
+            )
+            if prune_cmd:
+                cmd = "{} && {}".format(cmd, prune_cmd)
+            if exclude_files_cmd:
+                cmd = "{} && {}".format(cmd, exclude_files_cmd)
 
-                    if ext not in exclude_extensions:
-                        log.debug("Creating new symlink {} because {} is not in exclude_extensions={}".format(
-                            newpath, ext, exclude_extensions))
-                        os.symlink(oldpath, newpath)
-                    else:
-                        log.debug(
-                            "Skipping symlinking {} because {} files are excluded".format(oldpath, ext))
-                else:
-                    log.debug(
-                        "Skipping to create an archive directory of {} because it is excluded".format(oldpath))
-        except OSError as msg:
-            errmsg = "Error when creating archive directory: {}".format(msg)
-            log.debug(errmsg)
-            raise ArchiveException(reason=errmsg, status_code=500)
+        return cmd
 
     def post(self, runfolder):
         """
@@ -717,23 +738,16 @@ class CreateDirHandler(BaseDsmcHandler):
 
         # Messages
         invalid_body_msg = "Invalid body format."
-        missing_rm_msg = "The `remove` field must be a boolean."
 
         try:
             request_data = json.loads(self.request.body)
         except (ValueError, KeyError):
             raise ArchiveException(reason=invalid_body_msg, status_code=400)
 
-        # Booleans may arrive in either in:
-        # 1) JSON format (true), or
-        # 2) stringified Python format ("True") (e.g. from the Irma archiving workflow)
-        # TODO: Remove support for format 2, see DEVELOP-1024 // ML, 2021-01
         remove = request_data.get("remove", False)
-        if remove:
-            if isinstance(remove, basestring):
-                if not (remove == "True" or remove == "False"):
-                    raise ArchiveException(reason=missing_rm_msg, status_code=400)
-                remove = remove == "True"
+
+        if remove and isinstance(remove, basestring):
+            remove = remove.lower() in ["true"]
 
         def _process_comma_separated_param(param_name):
             val = request_data.get(param_name, [])
@@ -765,13 +779,35 @@ class CreateDirHandler(BaseDsmcHandler):
             raise ArchiveException(reason=msg, status_code=500)
 
         log.info("Creating a new archive {}...".format(path_to_archive))
-        os.mkdir(path_to_archive)
-        self._create_archive(
+        cmd = self._create_archive_cmd(
             path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
+        log.info("run command: {}".format(cmd))
 
-        response_data = {"service_version": version, "state": State.DONE}
+        log_dir = os.path.abspath(self.config["log_directory"])
+        archive_log = os.path.abspath(os.path.join(log_dir, "create_archive.log"))
 
-        self.set_status(200, reason="Finished processing.")
+        job_id = self.runner_service.start(
+            cmd,
+            nbr_of_cores=1,
+            run_dir=log_dir,
+            stdout=archive_log,
+            stderr=archive_log)
+
+        status_end_point = "{0}://{1}{2}".format(
+            self.request.protocol,
+            self.request.host,
+            self.reverse_url("status", job_id))
+
+        response_data = {
+            "job_id": job_id,
+            "service_version": version,
+            "link": status_end_point,
+            "state": self.runner_service.status(job_id)}
+
+        self.set_status(
+            202,
+            reason="started creating archive"
+        )
         self.write_object(response_data)
 
 
@@ -927,7 +963,10 @@ class StatusHandler(BaseDsmcHandler):
                 tsm_mock_enabled = False
             if tsm_mock_enabled:
                 self.runner_service.status = Mock(return_value=self.config["tsm_mock_status"])
-            status = {"state": self.runner_service.status(job_id)}
+            status = {
+                "state": self.runner_service.status(job_id),
+                "job_id": job_id
+            }
         else:
             # TODO: Update the correct status for all jobs; the filtering in jobrunner
             # doesn't work here.
@@ -937,6 +976,7 @@ class StatusHandler(BaseDsmcHandler):
                 status_dict[k] = {"state": v}
             status = status_dict
 
+        status["service_version"] = version
         self.write_json(status)
 
 # class StopHandler(BaseDsmcHandler):

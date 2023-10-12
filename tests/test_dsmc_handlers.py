@@ -40,6 +40,31 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
                 config=config or self.dummy_config,
                 runner_service=self.runner_service))
 
+    def poll_status(self, url, method="POST", body=None, max_polls=0, resp_code=0):
+        resp = self.fetch(
+            url,
+            method=method,
+            body=body,
+            allow_nonstandard_methods=True)
+        json_resp = json.loads(resp.body)
+
+        if "link" in json_resp:
+            link = urlparse.urlparse(json_resp["link"])[2]
+
+            no_polls = 0
+            while json_resp["state"] in [State.PENDING, State.STARTED] and (
+                    max_polls == 0 or
+                    no_polls < max_polls):
+                resp = self.fetch(link)
+                json_resp = json.loads(resp.body)
+                time.sleep(1)
+                no_polls += 1
+
+        if resp_code > 0:
+            self.assertEqual(resp.code, resp_code)
+
+        return json_resp
+
     def test_version(self):
         """
         Test version.
@@ -124,15 +149,15 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         archive_path = "./tests/resources/archives/testrunfolder_archive"
 
         # Base case
-        body = {"remove": "True"}
-        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        json_resp = json.loads(response.body)
+        body = {
+            "remove": "True"
+        }
+        json_resp = self.poll_status(
+            self.API_BASE + "/create_dir/testrunfolder",
+            body=json_encode(body)
+        )
 
         first_created_at = os.path.getctime(archive_path)
-        # Dirty workaround so we do not try to create the dir too quickly
-        # the second time.
-        import time
-        time.sleep(1)
 
         # Ensure nothing is excluded
         self.assertEqual(json_resp["state"], State.DONE)
@@ -143,9 +168,15 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertTrue(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 
         # Exclude parameters in POST request
-        body = {"remove": "True", "exclude_dirs": "directory3, someotherdir", "exclude_extensions": ".bin,.hmm"}
-        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        json_resp = json.loads(response.body)
+        body = {
+            "remove": "True",
+            "exclude_dirs": "directory3, someotherdir",
+            "exclude_extensions": ".bin,.hmm"
+        }
+        json_resp = self.poll_status(
+            self.API_BASE + "/create_dir/testrunfolder",
+            body=json_encode(body)
+        )
 
         # Ensure that only extensions and dirs in the POST request are excluded
         self.assertEqual(json_resp["state"], State.DONE)
@@ -155,25 +186,35 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2", "file.bin")))
 
         # Should fail due to folder already existing
-        body = {"remove": "False"}
-        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        json_resp = json.loads(response.body)
+        body = {
+            "remove": "False"
+        }
+        json_resp = self.poll_status(
+            self.API_BASE + "/create_dir/testrunfolder",
+            body=json_encode(body)
+        )
 
         self.assertEqual(json_resp["state"], State.ERROR)
 
         # Should fail due to folder already existing (default is remove: false)
         body = {}
-        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        json_resp = json.loads(response.body)
+        json_resp = self.poll_status(
+            self.API_BASE + "/create_dir/testrunfolder",
+            body=json_encode(body)
+        )
 
         self.assertEqual(json_resp["state"], State.ERROR)
 
         # Check that the dir is recreated
         os.mkdir(os.path.join(archive_path, "remove-me"))
 
-        body = {"remove": "True"}
-        response = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        json_resp = json.loads(response.body)
+        body = {
+            "remove": "True"
+        }
+        json_resp = self.poll_status(
+            self.API_BASE + "/create_dir/testrunfolder",
+            body=json_encode(body)
+        )
 
         self.assertEqual(json_resp["state"], State.DONE)
         second_created_at = os.path.getctime(archive_path)
@@ -203,28 +244,22 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         json_resp = json.loads(resp.body)
         self.assertEqual(json_resp["state"], State.ERROR)
 
-    def test_create_dir_invalid_remove(self):
-        body = {"remove": "foobar"}
-        resp = self.fetch(self.API_BASE + "/create_dir/testrunfolder", method="POST", body=json_encode(body))
-        self.assertEqual(resp.code, 400)
-        json_resp = json.loads(resp.body)
-        self.assertEqual(json_resp["state"], State.ERROR)
-
+    @mock.patch("archive_upload.lib.jobrunner.LocalQAdapter.status", autospec=True)
     @mock.patch("archive_upload.lib.jobrunner.LocalQAdapter.start", autospec=True)
-    def test_generate_checksum(self, mock_start):
+    def test_generate_checksum(self, mock_start, mock_status):
         job_id = 42
         mock_start.return_value = job_id
+        mock_status.return_value = State.DONE
 
         path_to_archive = os.path.abspath(os.path.join(self.dummy_config["path_to_archive_root"], "test_archive"))
         log_dir = os.path.abspath(self.dummy_config["log_directory"])
         checksum_log = os.path.join(log_dir, "checksum.log")
         filename = "checksums_prior_to_pdc.md5"
 
-        response = self.fetch(self.API_BASE + "/gen_checksums/test_archive", method="POST", allow_nonstandard_methods=True) #body=json_encode(body))
-        json_resp = json.loads(response.body)
+        json_resp = self.poll_status(self.API_BASE + "/gen_checksums/test_archive")
 
-        self.assertEqual(json_resp["state"], State.STARTED)
-        self.assertEqual(json_resp["job_id"], job_id)
+        self.assertEqual(json_resp["state"], State.DONE)
+        self.assertEqual(int(json_resp["job_id"]), job_id)
 
         expected_cmd = "cd {} && /usr/bin/find -L . -type f ! -path './{}' -exec /usr/bin/md5sum {{}} + > {}".format(path_to_archive, filename, filename)
         mock_start.assert_called_with(self.runner_service, expected_cmd, nbr_of_cores=1, run_dir=log_dir, stdout=checksum_log,  stderr=checksum_log)
@@ -484,18 +519,9 @@ echo uggla
         shutil.rmtree(archive_path, ignore_errors=True)
         shutil.copytree(original, archive_path)
 
-        resp = self.fetch(self.API_BASE + "/compress_archive/johanhe_test_archive", method="POST",
-                          allow_nonstandard_methods=True)
+        json_resp = self.poll_status(self.API_BASE + "/compress_archive/johanhe_test_archive")
 
-
-        json_resp = json.loads(resp.body)
-        self.assertEqual(json_resp["state"], State.PENDING)
-        link = urlparse.urlparse(json_resp["link"])[2]
-        while json_resp["state"] in [State.PENDING, State.STARTED]:
-            resp = self.fetch(link)
-            json_resp = json.loads(resp.body)
-            time.sleep(1)
-
+        self.assertEqual(json_resp["state"], State.DONE)
         self.assertFalse(os.path.exists(os.path.join(archive_path, "RunInfo.xml")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "Config")))
         self.assertTrue(os.path.exists(os.path.join(archive_path, "SampleSheet.csv")))
@@ -511,18 +537,9 @@ echo uggla
         shutil.rmtree(archive_path, ignore_errors=True)
         shutil.copytree(original, archive_path)
 
-        resp = self.fetch(self.API_BASE + "/compress_archive/testrunfolder_archive_tmp", method="POST",
-                          allow_nonstandard_methods=True)
+        json_resp = self.poll_status(self.API_BASE + "/compress_archive/testrunfolder_archive_tmp")
 
-        json_resp = json.loads(resp.body)
-        self.assertEqual(json_resp["state"], State.PENDING)
-
-        link = urlparse.urlparse(json_resp["link"])[2]
-        while json_resp["state"] in [State.PENDING, State.STARTED]:
-            resp = self.fetch(link)
-            json_resp = json.loads(resp.body)
-            time.sleep(1)
-
+        self.assertEqual(json_resp["state"], State.DONE)
         self.assertTrue(os.path.exists(os.path.join(archive_path, "file.csv")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "file.bin")))
         self.assertFalse(os.path.exists(os.path.join(archive_path, "directory2")))
@@ -547,26 +564,17 @@ echo uggla
             local_config = TestUtils.DUMMY_CONFIG.copy()
             self.dummy_config = TestUtils.DUMMY_CONFIG#Create a copy to not change the real config.
             self.dummy_config["exclude_from_tarball"] = []
-            resp = self.fetch(
-                self.API_BASE + "/compress_archive/" + os.path.basename(archive_path),
-                method="POST",
-                allow_nonstandard_methods=True)
 
-            json_resp = json.loads(resp.body)
             tarball_archive_path = os.path.join(
                 archive_path,
                 "{}.tar.gz".format(
                     os.path.basename(archive_path)))
 
-            self.assertEqual(json_resp["state"], State.PENDING)
-            self.assertEqual(archive_upload_version, json_resp["service_version"])
+            json_resp = self.poll_status(
+                self.API_BASE + "/compress_archive/" + os.path.basename(archive_path))
 
-            link = urlparse.urlparse(json_resp["link"])[2]
-            while json_resp["state"] in [State.PENDING, State.STARTED]:
-                resp = self.fetch(link)
-                json_resp = json.loads(resp.body)
-                time.sleep(1)
-
+            self.assertEqual(json_resp["state"], State.DONE)
+            self.assertEqual(json_resp["service_version"], archive_upload_version)
             self.assertTrue(os.path.exists(tarball_archive_path))
             self.assertListEqual([os.path.relpath(tarball_archive_path, archive_path)], os.listdir(archive_path))
 

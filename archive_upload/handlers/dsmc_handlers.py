@@ -39,7 +39,7 @@ class BaseDsmcHandler(BaseRestHandler):
         :param config: configuration used by the service
         :param runner_service: runner service to use. Must fulfill `archive_upload.lib.jobrunner.JobRunnerAdapter` interface
         """
-        self.config = config
+        self.config = config.get_app_config()
         self.runner_service = runner_service
 
     @staticmethod
@@ -136,15 +136,18 @@ class ReuploadHelper(object):
     Helper class for the ReuploadHandler. Methods put here mainly to faciliate easier testing.
     """
 
-    def get_pdc_descr(self, path_to_archive, dsmc_log_dir):
+    def get_pdc_descr(self, path_to_archive, dsmc_log_dir, dsmc_extra_args):
         """
         Fetches the archive `description` label from PDC.
 
         :param path_to_archive: The path to the archive uploaded that we want to get the description for
         :return: A dsmc description if successful, raises ArchiveException otherwise
         """
+
+        args = self.dsmc_args(dsmc_extra_args)
+
         log.info("Fetching description for latest upload of {} to PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc q ar {}".format(dsmc_log_dir, path_to_archive)
+        cmd = "export DSM_LOG={} && dsmc q ar {} {}".format(dsmc_log_dir, path_to_archive, args)
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         dsmc_out, _ = p.communicate()
@@ -207,7 +210,7 @@ class ReuploadHelper(object):
 
         return (filename, byte_size)
 
-    def get_pdc_filelist(self, path_to_archive, descr, dsmc_log_dir):
+    def get_pdc_filelist(self, path_to_archive, descr, dsmc_log_dir, dsmc_extra_args):
         """
         Gets the files and their sizes from PDC for a certain path (archive), with a specific description.
 
@@ -215,9 +218,15 @@ class ReuploadHelper(object):
         :param descr: The description label for the uploaded archive
         :return The dict `uploaded_files` containing a mapping between uploaded file and size in bytes. Raises ArchiveException if there was an error.
         """
+        key_values = {
+            "subdir": "yes",
+            "description": descr
+        }
+        key_values.update(dsmc_extra_args)
+        args = self.dsmc_args(key_values)
         log.info("Fetching remote filelist for {} from PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc q ar {}/ -subdir=yes -description={}".format(
-            dsmc_log_dir, path_to_archive, descr)
+        cmd = "export DSM_LOG={} && dsmc q ar {}/ {}".format(
+            dsmc_log_dir, path_to_archive, args)
 
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -309,7 +318,7 @@ class ReuploadHelper(object):
 
         return reupload_files
 
-    def reupload(self, reupload_files, descr, dsmc_log_dir, runner_service):
+    def reupload(self, reupload_files, descr, dsmc_log_dir, dsmc_extra_args, runner_service):
         """
         Tells `dsmc` to upload all files in the given filelist.
 
@@ -332,8 +341,15 @@ class ReuploadHelper(object):
 
         output_file = BaseDsmcHandler._rename_log_file(dsmc_log_dir)
 
-        cmd = "export DSM_LOG={} && dsmc archive -filelist={} -description={}".format(
-            dsmc_log_dir, reupload_file, descr)
+        key_values = {
+            "filelist": reupload_file,
+            "description": descr
+        }
+        key_values.update(dsmc_extra_args)
+        args = self.dsmc_args(key_values)
+
+        cmd = "export DSM_LOG={} && dsmc archive {}".format(
+            dsmc_log_dir, args)
         log.debug("Running command {}".format(cmd))
         job_id = runner_service.start(
             cmd, nbr_of_cores=1, run_dir=dsmc_log_dir, stdout=output_file, stderr=output_file)
@@ -343,6 +359,19 @@ class ReuploadHelper(object):
     def _tmp_file(self, component):
         uniq_id = str(uuid.uuid4())
         return os.path.join("/tmp", "{}-{}".format(component, uniq_id))
+
+
+    @staticmethod
+    def dsmc_args(key_values):
+        """
+        Convert a dict of arguments, represented as key-value pairs as a string to be included on
+        the dsmc command line
+
+        :return: a string with arguments that should be appended to the dsmc command line
+        """
+        args = ["-{}='{}'".format(k, v) for k, v in key_values.items() if v is not None]
+        args.extend(["-{}".format(k) for k, v in key_values.items() if v is None])
+        return " ".join(args)
 
 
 class ReuploadHandler(BaseDsmcHandler):
@@ -373,6 +402,7 @@ class ReuploadHandler(BaseDsmcHandler):
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
+        dsmc_extra_args = self.config.get("dsmc_extra_args", {})
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):
             msg = "Error when validating log dir. {} is not a directory.".format(dsmc_log_root_dir)
@@ -384,19 +414,28 @@ class ReuploadHandler(BaseDsmcHandler):
             os.makedirs(dsmc_log_dir)
 
         # Fetch the description of the last uploaded version of this archive
-        descr = helper.get_pdc_descr(path_to_archive, dsmc_log_dir)
+        descr = helper.get_pdc_descr(path_to_archive, dsmc_log_dir, dsmc_extra_args)
 
         # Get the local and remote filelist, and then get the list of files
         # that are missing on remote side, or differs in byte size.
         # NB. Uploaded list contains folders as well, but when we check local
         # content we only look at the files, and ignore the folders.
-        uploaded_files = helper.get_pdc_filelist(path_to_archive, descr, dsmc_log_dir)
+        uploaded_files = helper.get_pdc_filelist(
+            path_to_archive,
+            descr,
+            dsmc_log_dir,
+            dsmc_extra_args)
         local_files = helper.get_local_filelist(path_to_archive)
         reupload_files = helper.get_files_to_reupload(local_files, uploaded_files)
 
         # Upload the missing files with the same description previously used.
         if reupload_files:
-            job_id = helper.reupload(reupload_files, descr, dsmc_log_dir, self.runner_service)
+            job_id = helper.reupload(
+                reupload_files,
+                descr,
+                dsmc_log_dir,
+                dsmc_extra_args,
+                self.runner_service)
             log.debug("Reupload job_id {}".format(job_id))
 
             status_end_point = "{0}://{1}{2}".format(
@@ -452,6 +491,7 @@ class UploadHandler(BaseDsmcHandler):
 
         path_to_archive = os.path.join(monitored_dir, runfolder_archive)
         dsmc_log_root_dir = self.config["log_directory"]
+        dsmc_extra_args = self.config.get("dsmc_extra_args", {})
         uniq_id = str(uuid.uuid4())
 
         if not self._is_valid_log_dir(dsmc_log_root_dir):
@@ -463,12 +503,18 @@ class UploadHandler(BaseDsmcHandler):
         if not os.path.exists(dsmc_log_dir):
             os.makedirs(dsmc_log_dir)
 
-
         output_file = self._rename_log_file(dsmc_log_dir)
 
+        key_values = {
+            "subdir": "yes",
+            "description": uniq_id
+        }
+        key_values.update(dsmc_extra_args)
+        args = ReuploadHelper.dsmc_args(key_values)
+
         log.info("Uploading {} to PDC...".format(path_to_archive))
-        cmd = "export DSM_LOG={} && dsmc archive {}/ -subdir=yes -description={}".format(
-            dsmc_log_dir, path_to_archive, uniq_id)
+        cmd = "export DSM_LOG={} && dsmc archive {}/ {}".format(
+            dsmc_log_dir, path_to_archive, args)
 
         # Mock starting the TSM process if mock mode is enabled
         try:
@@ -608,48 +654,69 @@ class CreateDirHandler(BaseDsmcHandler):
             return True
 
     @staticmethod
-    def _create_archive(oldtree, newtree, exclude_dirs=[], exclude_extensions=[]):
-        """
-        Create a new runfolder archive named `<runfolder>_archive` by iterating through
-        the runfolder and symlinking each file. If the service has been configured to
-        exclude certain directories or file extensions then those directories and symlinks
-        will be ignored.
+    def _prune_subdirs_cmd(dirpath, subdirs, exclude_dirs):
+        exclude_dirs = exclude_dirs or []
+        cmd = []
+        for dir_to_prune in list(filter(
+                lambda d: d in exclude_dirs,
+                subdirs)):
+            cmd.append(
+                "rm -rf "
+                "{}".format(
+                    os.path.join(
+                        dirpath,
+                        dir_to_prune)))
+            # prune the tree to walk down
+            del subdirs[
+                subdirs.index(dir_to_prune)]
+        return " && ".join(cmd), subdirs
 
-        :param oldtree: Path to the runfolder
-        :param newtree: Path to the archive which we are going to create
-        :param exclude_dirs: List of directory names to exclude from the archive
-        :param exclude_extensions: List of file extensions to exclude from the archive
-        """
-        try:
-            content = os.listdir(oldtree)
+    @staticmethod
+    def _exclude_extension_cmd(dirpath, dirfiles, exclude_extensions):
+        exclude_extensions = exclude_extensions or []
+        cmd = []
+        for file_to_exclude in filter(
+                lambda f: os.path.splitext(f)[1] in exclude_extensions,
+                dirfiles):
+            cmd.append(
+                "rm -f "
+                "{}".format(
+                    os.path.join(
+                        dirpath,
+                        file_to_exclude)))
 
-            for entry in content:
-                oldpath = os.path.join(oldtree, entry)
-                newpath = os.path.join(newtree, entry)
+        return " && ".join(cmd)
 
-                if os.path.isdir(oldpath) and entry not in exclude_dirs:
-                    log.debug("Creating new dir {} because {} is not in exclude_dirs={}".format(
-                        newpath, entry, exclude_dirs))
-                    os.mkdir(newpath)
-                    CreateDirHandler._create_archive(
-                        oldpath, newpath, exclude_dirs, exclude_extensions)
-                elif os.path.isfile(oldpath):
-                    _, ext = os.path.splitext(oldpath)
+    @staticmethod
+    def _create_archive_cmd(oldtree, newtree, exclude_dirs=None, exclude_extensions=None):
+        oldtree = os.path.abspath(oldtree)
+        cmd = "cp " \
+              "-as " \
+              "{} " \
+              "{}".format(
+            oldtree,
+            newtree)
+        for dirpath, subdirs, dirfiles in os.walk(oldtree, topdown=True):
+            newpath = dirpath.replace(
+                oldtree,
+                os.path.abspath(newtree)
+            )
+            prune_cmd, subdirs = CreateDirHandler._prune_subdirs_cmd(
+                newpath,
+                subdirs,
+                exclude_dirs
+            )
+            exclude_files_cmd = CreateDirHandler._exclude_extension_cmd(
+                newpath,
+                dirfiles,
+                exclude_extensions
+            )
+            if prune_cmd:
+                cmd = "{} && {}".format(cmd, prune_cmd)
+            if exclude_files_cmd:
+                cmd = "{} && {}".format(cmd, exclude_files_cmd)
 
-                    if ext not in exclude_extensions:
-                        log.debug("Creating new symlink {} because {} is not in exclude_extensions={}".format(
-                            newpath, ext, exclude_extensions))
-                        os.symlink(oldpath, newpath)
-                    else:
-                        log.debug(
-                            "Skipping symlinking {} because {} files are excluded".format(oldpath, ext))
-                else:
-                    log.debug(
-                        "Skipping to create an archive directory of {} because it is excluded".format(oldpath))
-        except OSError, msg:
-            errmsg = "Error when creating archive directory: {}".format(msg)
-            log.debug(errmsg)
-            raise ArchiveException(reason=errmsg, status_code=500)
+        return cmd
 
     def post(self, runfolder):
         """
@@ -671,23 +738,16 @@ class CreateDirHandler(BaseDsmcHandler):
 
         # Messages
         invalid_body_msg = "Invalid body format."
-        missing_rm_msg = "The `remove` field must be a boolean."
 
         try:
             request_data = json.loads(self.request.body)
         except (ValueError, KeyError):
             raise ArchiveException(reason=invalid_body_msg, status_code=400)
 
-        # Booleans may arrive in either in:
-        # 1) JSON format (true), or
-        # 2) stringified Python format ("True") (e.g. from the Irma archiving workflow)
-        # TODO: Remove support for format 2, see DEVELOP-1024 // ML, 2021-01
         remove = request_data.get("remove", False)
-        if remove:
-            if isinstance(remove, basestring):
-                if not (remove == "True" or remove == "False"):
-                    raise ArchiveException(reason=missing_rm_msg, status_code=400)
-                remove = remove == "True"
+
+        if remove and isinstance(remove, basestring):
+            remove = remove.lower() in ["true"]
 
         def _process_comma_separated_param(param_name):
             val = request_data.get(param_name, [])
@@ -719,13 +779,35 @@ class CreateDirHandler(BaseDsmcHandler):
             raise ArchiveException(reason=msg, status_code=500)
 
         log.info("Creating a new archive {}...".format(path_to_archive))
-        os.mkdir(path_to_archive)
-        self._create_archive(
+        cmd = self._create_archive_cmd(
             path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
+        log.info("run command: {}".format(cmd))
 
-        response_data = {"service_version": version, "state": State.DONE}
+        log_dir = os.path.abspath(self.config["log_directory"])
+        archive_log = os.path.abspath(os.path.join(log_dir, "create_archive.log"))
 
-        self.set_status(200, reason="Finished processing.")
+        job_id = self.runner_service.start(
+            cmd,
+            nbr_of_cores=1,
+            run_dir=log_dir,
+            stdout=archive_log,
+            stderr=archive_log)
+
+        status_end_point = "{0}://{1}{2}".format(
+            self.request.protocol,
+            self.request.host,
+            self.reverse_url("status", job_id))
+
+        response_data = {
+            "job_id": job_id,
+            "service_version": version,
+            "link": status_end_point,
+            "state": self.runner_service.status(job_id)}
+
+        self.set_status(
+            202,
+            reason="started creating archive"
+        )
         self.write_object(response_data)
 
 
@@ -734,6 +816,58 @@ class CompressArchiveHandler(BaseDsmcHandler):
     """
     Handler for compressing certain files in the archive before uploading.
     """
+
+    @staticmethod
+    def _create_tarball_cmd(tarball_name, path_to_archive, exclude_from_tarball):
+        exclude_patterns = " ".join(
+            [
+                "--exclude={}".format(p)
+                for p in exclude_from_tarball + [tarball_name]
+            ]
+        )
+        return "cd {} && " \
+               "touch {} && " \
+               "tar " \
+               "--create " \
+               "--gzip " \
+               "--dereference " \
+               "--hard-dereference " \
+               "--file={} " \
+               "{} " \
+               ".".format(
+            path_to_archive,
+            tarball_name,
+            tarball_name,
+            exclude_patterns
+        )
+
+    @staticmethod
+    def _remove_tarballed_files_cmd(path_to_archive, tarball_name):
+        return "cd {} && " \
+               "tar " \
+               "--list " \
+               "--file={} |" \
+               "xargs " \
+               "-n1 " \
+               "rm -f".format(
+            path_to_archive,
+            tarball_name
+        )
+
+    @staticmethod
+    def _remove_empty_dirs_cmd(path_to_archive):
+        return "cd {} && " \
+               "find " \
+               ". " \
+               "-depth " \
+               "-mindepth 1 " \
+               "-type d |" \
+               "xargs " \
+               "-n1 " \
+               "rmdir " \
+               "--ignore-fail-on-non-empty".format(
+            path_to_archive
+        )
 
     def post(self, archive):
         """
@@ -753,7 +887,8 @@ class CompressArchiveHandler(BaseDsmcHandler):
                 archive, path_to_archive_root)
             raise ArchiveException(reason=msg, status_code=400)
 
-        tarball_path = "{}.tar.gz".format(os.path.join(path_to_archive, archive))
+        tarball_name = "{}.tar.gz".format(archive)
+        tarball_path = os.path.join(path_to_archive, tarball_name)
 
         log.debug("Checking to see if {} exists".format(tarball_path))
 
@@ -761,59 +896,50 @@ class CompressArchiveHandler(BaseDsmcHandler):
             msg = "Error when creating archive tarball. {} already exists.".format(tarball_path)
             raise ArchiveException(reason=msg, status_code=400)
 
-        def exclude_content(tarinfo):
-            """
-            Filter function when creating the tarball
-            """
-            name = os.path.basename(tarinfo.name)
-            # The name field contains the path to the file relative to the
-            # root dir of the archive, i.e. the path starts with "./".
-            # Therefore the second element in the list split on "/"
-            # will be the first subdir (if any) inside the archive.
-            first_dir = tarinfo.name.split("/")[1]
-
-            # Don't include the file if it matches our list of
-            # files to exclude, or if the first dir in its path
-            # matches one of the dir names in our exception list.
-            for exclude in exclude_from_tarball:
-                if exclude == name or exclude == first_dir:
-                    return None
-
-            return tarinfo
-
         exclude_from_tarball = self.config["exclude_from_tarball"]
-        log.info("Creating tarball {}...".format(tarball_path))
+        cmd = " ( {} ) && ( {} ) ; ( {} )".format(
+            self._create_tarball_cmd(
+                tarball_name,
+                path_to_archive,
+                exclude_from_tarball),
+            self._remove_tarballed_files_cmd(
+                path_to_archive,
+                tarball_name),
+            self._remove_empty_dirs_cmd(
+                path_to_archive)
+        )
 
-        with tarfile.open(name=tarball_path, mode="w:gz", dereference=True) as tar:
-            tar.add(path_to_archive, arcname="./", recursive=True, filter=exclude_content)
+        log.info("run command: {}".format(cmd))
+        log.info(
+            "Creating tarball {}, then removing files from {} that were added to tarball".format(
+                tarball_path,
+                path_to_archive_root))
 
-        log.info("Removing files from {} that were added to {}".format(
-            path_to_archive_root, tarball_path))
+        log_dir = os.path.abspath(self.config["log_directory"])
+        tarball_log = os.path.abspath(os.path.join(log_dir, "compress_archive.log"))
 
-        # Remove files that were added to the tarball
+        job_id = self.runner_service.start(
+            cmd,
+            nbr_of_cores=1,
+            run_dir=log_dir,
+            stdout=tarball_log,
+            stderr=tarball_log)
 
-        # get a list of files and folders duplicated between the tarball and the archive
-        paths_to_remove = FileUtils.paths_duplicated_in_tarball(tarball_path, path_to_archive)
+        status_end_point = "{0}://{1}{2}".format(
+            self.request.protocol,
+            self.request.host,
+            self.reverse_url("status", job_id))
 
-        # remove the files first
-        for file_to_remove in filter(os.path.isfile, paths_to_remove):
-            try:
-                os.remove(file_to_remove)
-            except OSError as e:
-                raise ArchiveException(
-                    status_code=500,
-                    reason="Error when creating archive tarball. Could not remove file {}: {}".format(
-                        file_to_remove, e))
+        response_data = {
+            "job_id": job_id,
+            "service_version": version,
+            "link": status_end_point,
+            "state": self.runner_service.status(job_id)}
 
-        # then the directories
-        for dir_to_remove_if_empty in filter(os.path.isdir, paths_to_remove):
-            try:
-                os.rmdir(dir_to_remove_if_empty)
-            except OSError as e:
-                log.debug("directory {} not removed, probably because it is not empty".format(dir_to_remove_if_empty))
-
-        response_data = {"service_version": version, "state": State.DONE}
-        self.set_status(200, reason="Finished creating the tarball")
+        self.set_status(
+            202,
+            reason="started compressing archive"
+        )
         self.write_object(response_data)
 
 
@@ -837,7 +963,10 @@ class StatusHandler(BaseDsmcHandler):
                 tsm_mock_enabled = False
             if tsm_mock_enabled:
                 self.runner_service.status = Mock(return_value=self.config["tsm_mock_status"])
-            status = {"state": self.runner_service.status(job_id)}
+            status = {
+                "state": self.runner_service.status(job_id),
+                "job_id": job_id
+            }
         else:
             # TODO: Update the correct status for all jobs; the filtering in jobrunner
             # doesn't work here.
@@ -847,6 +976,7 @@ class StatusHandler(BaseDsmcHandler):
                 status_dict[k] = {"state": v}
             status = status_dict
 
+        status["service_version"] = version
         self.write_json(status)
 
 # class StopHandler(BaseDsmcHandler):

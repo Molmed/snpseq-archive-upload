@@ -843,30 +843,49 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
     @staticmethod
     def _remove_tarballed_files_cmd(path_to_archive, tarball_name):
+        # list all non-directory paths, filter them against the tarball contents and
+        # remove the paths that have been added to the tarball
         return "cd {} && " \
-               "tar " \
-               "--list " \
-               "--file={} |" \
+               "find . " \
+               "-depth " \
+               "-not -type d |" \
+               "grep " \
+               "-x " \
+               "-f <(" \
+               "  tar " \
+               "  --list " \
+               "  --file={}) |" \
                "xargs " \
                "-n1 " \
-               "rm -f".format(
+               "-I% " \
+               "rm -f '\"%\"'".format(
             path_to_archive,
+            tarball_name,
             tarball_name
         )
 
     @staticmethod
-    def _remove_empty_dirs_cmd(path_to_archive):
+    def _remove_empty_dirs_cmd(path_to_archive, tarball_name):
         return "cd {} && " \
-               "find " \
-               ". " \
-               "-depth " \
+               "find . " \
                "-mindepth 1 " \
+               "-depth " \
                "-type d |" \
+               "grep " \
+               "-x " \
+               "-f <(" \
+               "  tar " \
+               "  --list " \
+               "  --file={} |" \
+               "  sed -re 's#/$##') |" \
                "xargs " \
                "-n1 " \
+               "-I% " \
                "rmdir " \
-               "--ignore-fail-on-non-empty".format(
-            path_to_archive
+               "--ignore-fail-on-non-empty " \
+               "'\"%\"'".format(
+            path_to_archive,
+            tarball_name
         )
 
     def post(self, archive):

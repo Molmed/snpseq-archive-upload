@@ -925,7 +925,8 @@ class CompressArchiveHandler(BaseDsmcHandler):
                 path_to_archive,
                 tarball_name),
             self._remove_empty_dirs_cmd(
-                path_to_archive)
+                path_to_archive,
+                tarball_name)
         )
 
         log.info("run command: {}".format(cmd))

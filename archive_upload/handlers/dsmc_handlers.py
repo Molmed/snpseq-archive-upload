@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import socket
+import stat
 import subprocess
 import shutil
 import tarfile
@@ -31,6 +32,13 @@ class BaseDsmcHandler(BaseRestHandler):
     Base handler for dsmc upload operations.
     """
 
+    WRAPPER_TEMPLATE = """
+#!/usr/bin/env bash
+
+set -e
+
+{}
+    """
     def initialize(self, config, runner_service):
         """
         Ensures that any parameters feed to this are available
@@ -116,6 +124,22 @@ class BaseDsmcHandler(BaseRestHandler):
                 "http_code": status_code,
                 "msg": self._reason}
         self.finish(response_data)
+
+    @staticmethod
+    def write_command_to_wrapper(cmd, wrapper):
+
+        with open(wrapper, "w") as fh:
+            fh.write(
+                BaseDsmcHandler.WRAPPER_TEMPLATE.format(cmd)
+            )
+
+        os.chmod(
+            wrapper,
+            os.stat(wrapper)[
+                stat.ST_MODE
+            ] | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+        )
+
 
 class VersionHandler(BaseDsmcHandler):
 
@@ -585,8 +609,24 @@ class GenChecksumsHandler(BaseDsmcHandler):
             path_to_archive, filename, filename)
         log.info("Generating checksums for {}".format(path_to_archive))
         log.debug("Will now execute command {}".format(cmd))
+
+        wrapper = os.path.abspath(
+            os.path.join(
+                path_to_archive_root,
+                "{}.wrapper.checksum.sh".format(
+                    runfolder_archive
+                )
+            )
+        )
+        self.write_command_to_wrapper(cmd, wrapper)
+
         job_id = self.runner_service.start(
-            cmd, nbr_of_cores=1, run_dir=log_dir, stdout=checksum_log, stderr=checksum_log)
+            wrapper,
+            nbr_of_cores=1,
+            run_dir=log_dir,
+            stdout=checksum_log,
+            stderr=checksum_log
+        )
 
         status_end_point = "{0}://{1}{2}".format(
             self.request.protocol,
@@ -782,12 +822,19 @@ class CreateDirHandler(BaseDsmcHandler):
         cmd = self._create_archive_cmd(
             path_to_runfolder, path_to_archive, exclude_dirs, exclude_extensions)
         log.info("run command: {}".format(cmd))
-
         log_dir = os.path.abspath(self.config["log_directory"])
         archive_log = os.path.abspath(os.path.join(log_dir, "create_archive.log"))
 
+        wrapper = os.path.abspath(
+            os.path.join(
+                path_to_archive_root,
+                "{}.wrapper.create.sh".format(runfolder)
+            )
+        )
+        self.write_command_to_wrapper(cmd, wrapper)
+
         job_id = self.runner_service.start(
-            cmd,
+            wrapper,
             nbr_of_cores=1,
             run_dir=log_dir,
             stdout=archive_log,
@@ -835,58 +882,57 @@ class CompressArchiveHandler(BaseDsmcHandler):
                "--file={} " \
                "{} " \
                ".".format(
-            path_to_archive,
-            tarball_name,
-            tarball_name,
-            exclude_patterns
-        )
+                   path_to_archive,
+                   tarball_name,
+                   tarball_name,
+                   exclude_patterns
+               )
 
     @staticmethod
-    def _remove_tarballed_files_cmd(path_to_archive, tarball_name):
+    def _remove_tarballed_files_cmd(tarball_list_file):
         # list all non-directory paths, filter them against the tarball contents and
         # remove the paths that have been added to the tarball
-        return "cd {} && " \
-               "find . " \
+        return "find . " \
                "-depth " \
                "-not -type d |" \
                "grep " \
                "-x " \
-               "-f <(" \
-               "  tar " \
-               "  --list " \
-               "  --file={}) |" \
+               "-f {} |" \
                "xargs " \
                "-n1 " \
                "-I% " \
-               "rm -f '\"%\"'".format(
-            path_to_archive,
-            tarball_name,
-            tarball_name
-        )
+               "rm -f \"%\"".format(
+                   tarball_list_file
+               )
 
     @staticmethod
-    def _remove_empty_dirs_cmd(path_to_archive, tarball_name):
-        return "cd {} && " \
-               "find . " \
+    def _remove_empty_dirs_cmd(tarball_list_file):
+        return "find . " \
                "-mindepth 1 " \
                "-depth " \
                "-type d |" \
                "grep " \
                "-x " \
-               "-f <(" \
-               "  tar " \
-               "  --list " \
-               "  --file={} |" \
-               "  sed -re 's#/$##') |" \
+               "-f {} |" \
                "xargs " \
                "-n1 " \
                "-I% " \
                "rmdir " \
                "--ignore-fail-on-non-empty " \
-               "'\"%\"'".format(
-            path_to_archive,
-            tarball_name
-        )
+               "\"%\"".format(
+                   tarball_list_file
+               )
+
+    @staticmethod
+    def _list_tarfile_contents(tarball_name, tarball_list_file):
+        return "tar " \
+               "--list " \
+               "--file={} |" \
+               "sed -re 's#/$##' > " \
+               "{}".format(
+                    tarball_name,
+                    tarball_list_file
+               )
 
     def post(self, archive):
         """
@@ -908,6 +954,7 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
         tarball_name = "{}.tar.gz".format(archive)
         tarball_path = os.path.join(path_to_archive, tarball_name)
+        tarball_list_file = "{}.list".format(path_to_archive)
 
         log.debug("Checking to see if {} exists".format(tarball_path))
 
@@ -916,17 +963,18 @@ class CompressArchiveHandler(BaseDsmcHandler):
             raise ArchiveException(reason=msg, status_code=400)
 
         exclude_from_tarball = self.config["exclude_from_tarball"]
-        cmd = " ( {} ) && ( {} ) ; ( {} )".format(
+        cmd = "{}\n{}\n{}\n{}".format(
             self._create_tarball_cmd(
                 tarball_name,
                 path_to_archive,
                 exclude_from_tarball),
+            self._list_tarfile_contents(
+                tarball_name,
+                tarball_list_file),
             self._remove_tarballed_files_cmd(
-                path_to_archive,
-                tarball_name),
+                tarball_list_file),
             self._remove_empty_dirs_cmd(
-                path_to_archive,
-                tarball_name)
+                tarball_list_file)
         )
 
         log.info("run command: {}".format(cmd))
@@ -935,11 +983,19 @@ class CompressArchiveHandler(BaseDsmcHandler):
                 tarball_path,
                 path_to_archive_root))
 
+        wrapper = os.path.abspath(
+            os.path.join(
+                path_to_archive_root,
+                "{}.wrapper.compress.sh".format(archive)
+            )
+        )
+        self.write_command_to_wrapper(cmd, wrapper)
+
         log_dir = os.path.abspath(self.config["log_directory"])
         tarball_log = os.path.abspath(os.path.join(log_dir, "compress_archive.log"))
 
         job_id = self.runner_service.start(
-            cmd,
+            wrapper,
             nbr_of_cores=1,
             run_dir=log_dir,
             stdout=tarball_log,

@@ -890,8 +890,12 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
     @staticmethod
     def _remove_tarballed_files_cmd(tarball_list_file):
-        # list all non-directory paths, filter them against the tarball contents and
-        # remove the paths that have been added to the tarball
+        # list all non-directory paths, starting at the deepest level, filter them against the
+        # tarball contents and remove the paths that have been added to the tarball
+        # grep -x ensures that the entire line is matched against the patterns in the file given
+        # by -f (which will be the list of files and folders in the tar archive)
+        # -n1 ensures that xargs will process each entry separately and -I% assigns the entry to
+        # the variable "%" which can be referenced in the rm expression
         return "find . " \
                "-depth " \
                "-not -type d |" \
@@ -907,6 +911,12 @@ class CompressArchiveHandler(BaseDsmcHandler):
 
     @staticmethod
     def _remove_empty_dirs_cmd(tarball_list_file):
+        # list all directory paths, starting at the deepest level, filter them against the
+        # tarball contents and remove the paths that have been added to the tarball
+        # grep -x ensures that the entire line is matched against the patterns in the file given
+        # by -f (which will be the list of files and folders in the tar archive)
+        # -n1 ensures that xargs will process each entry separately and -I% assigns the entry to
+        # the variable "%" which can be referenced in the rm expression
         return "find . " \
                "-mindepth 1 " \
                "-depth " \

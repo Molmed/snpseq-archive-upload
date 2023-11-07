@@ -251,18 +251,43 @@ class TestDsmcHandlers(AsyncHTTPTestCase):
         mock_start.return_value = job_id
         mock_status.return_value = State.DONE
 
-        path_to_archive = os.path.abspath(os.path.join(self.dummy_config["path_to_archive_root"], "test_archive"))
+        archive_name = "test_archive"
+        path_to_archive = os.path.abspath(
+            os.path.join(
+                self.dummy_config["path_to_archive_root"],
+                archive_name
+            )
+        )
         log_dir = os.path.abspath(self.dummy_config["log_directory"])
         checksum_log = os.path.join(log_dir, "checksum.log")
         filename = "checksums_prior_to_pdc.md5"
 
-        json_resp = self.poll_status(self.API_BASE + "/gen_checksums/test_archive")
+        json_resp = self.poll_status(
+            self.API_BASE + "/gen_checksums/{}".format(
+                archive_name
+            )
+        )
 
         self.assertEqual(json_resp["state"], State.DONE)
         self.assertEqual(int(json_resp["job_id"]), job_id)
 
-        expected_cmd = "cd {} && /usr/bin/find -L . -type f ! -path './{}' -exec /usr/bin/md5sum {{}} + > {}".format(path_to_archive, filename, filename)
-        mock_start.assert_called_with(self.runner_service, expected_cmd, nbr_of_cores=1, run_dir=log_dir, stdout=checksum_log,  stderr=checksum_log)
+        wrapper = os.path.abspath(
+            os.path.join(
+                os.path.dirname(path_to_archive),
+                "{}.wrapper.checksum.sh".format(
+                    archive_name
+                )
+            )
+        )
+        expected_cmd = wrapper
+        mock_start.assert_called_with(
+            self.runner_service,
+            expected_cmd,
+            nbr_of_cores=1,
+            run_dir=log_dir,
+            stdout=checksum_log,
+            stderr=checksum_log
+        )
 
     def test_reupload_handler(self):
         job_id = 27
